@@ -1,0 +1,12 @@
+{
+	"port": 1883,
+	"cafile": "",
+	"certfile": "",
+	"keyfile": "",
+	"cluster": {
+		"port": 1993,
+		"router": [
+			"127.0.0.1:1200"
+		]
+	}
+}
