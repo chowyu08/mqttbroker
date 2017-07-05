@@ -1,6 +1,9 @@
 package server
 
-import "net"
+import (
+	"net"
+	"sync/atomic"
+)
 
 // Type of client connection.
 const (
@@ -21,4 +24,25 @@ type subscription struct {
 	subject []byte
 	queue   []byte
 	sid     []byte
+}
+
+func (c *client) initClient() {
+	s := c.srv
+	c.cid = atomic.AddUint64(&s.gcid, 1)
+}
+func (c *client) readLoop() {
+	if nc == nil {
+		return
+	}
+	for {
+		buf, err := getMessageBuffer(c.nc)
+		if err != nil {
+			c.closeConnection()
+			return
+		}
+		c.parse(buf)
+	}
+}
+func (c *client) closeConnection() {
+
 }
