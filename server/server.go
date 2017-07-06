@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/smallnest/rpcx/log"
+	log "github.com/cihub/seelog"
 )
 
 const (
@@ -39,6 +39,7 @@ type Server struct {
 	listener      net.Listener
 	routeListener net.Listener
 	clients       map[uint64]*client
+	routes        map[uint64]*client
 	sl            *Sublist
 }
 
@@ -61,20 +62,32 @@ func (s *Server) Start() {
 	s.mu.Lock()
 	s.running = true
 	s.mu.Unlock()
-	if s.info.ClusterPort != 0 {
+	if s.info.Port != 0 {
 		s.startGoRoutine(func() {
-			// s.StartRouting()
+			s.AcceptLoop(CLIENT)
 		})
 	}
-	s.ClientAcceptLoop()
+	if s.info.ClusterPort != 0 {
+		s.startGoRoutine(func() {
+			s.AcceptLoop(ROUTER)
+		})
+	}
+
 }
-func (s *Server) ClientAcceptLoop() {
-	hp := ":" + strconv.FormatUint(s.info.Port, 10)
+func (s *Server) AcceptLoop(typ int) {
+	var hp string
+	if typ == CLIENT {
+		hp = ":" + strconv.FormatUint(s.info.Port, 10)
+	} else if typ == ROUTER {
+		hp = ":" + strconv.FormatUint(s.info.ClusterPort, 10)
+	}
+
 	l, e := net.Listen("tcp", hp)
 	if e != nil {
-		log.Info("\tserver/server.go: Error listening on port: %s, %q", hp, e)
+		log.Error("\tserver/server.go: Error listening on port: %s, %q", hp, e)
 		return
 	}
+	log.Info("\tListen on port in %s ", hp)
 	tmpDelay := 10 * ACCEPT_MIN_SLEEP
 	for {
 		conn, err := l.Accept()
@@ -94,46 +107,45 @@ func (s *Server) ClientAcceptLoop() {
 		}
 		tmpDelay = ACCEPT_MIN_SLEEP
 		s.startGoRoutine(func() {
-			s.createClient(conn)
+			s.createClient(conn, typ)
 		})
 	}
 }
-func (s *Server) createClient(conn net.Conn) *client {
-	c := &client{srv: s, nc: conn}
+func (s *Server) createClient(conn net.Conn, typ int) *client {
+	c := &client{srv: s, nc: conn, typ: typ}
 	c.initClient()
 	s.mu.Lock()
-	// If server is not running, Shutdown() may have already gathered the
-	// list of connections to close. It won't contain this one, so we need
-	// to bail out now otherwise the readLoop started down there would not
-	// be interrupted.
 	if !s.running {
 		s.mu.Unlock()
 		return c
 	}
-	s.clients[c.cid] = c
+	// s.clients[c.cid] = c
 	s.mu.Unlock()
 
 	// Re-Grab lock
 	c.mu.Lock()
-	tlsRequired := s.info.TLSRequired
-	if tlsRequired {
-		// c.nc = tls.Server(c.nc, s.opts.TLSConfig)
-		// conn := c.nc.(*tls.Conn)
+	if c.typ != ROUTER {
+		tlsRequired := s.info.TLSRequired
+		if tlsRequired {
+			// c.nc = tls.Server(c.nc, s.opts.TLSConfig)
+			// conn := c.nc.(*tls.Conn)
 
-		// // Setup the timeout
-		// ttl := secondsToDuration(s.opts.TLSTimeout)
-		// time.AfterFunc(ttl, func() { tlsTimeout(c, conn) })
-		// conn.SetReadDeadline(time.Now().Add(ttl))
+			// // Setup the timeout
+			// ttl := secondsToDuration(s.opts.TLSTimeout)
+			// time.AfterFunc(ttl, func() { tlsTimeout(c, conn) })
+			// conn.SetReadDeadline(time.Now().Add(ttl))
 
-		// // Force handshake
-		// c.mu.Unlock()
-		// if err := conn.Handshake(); err != nil {
-		// 	c.Debugf("TLS handshake error: %v", err)
-		// 	c.sendErr("Secure Connection - TLS Required")
-		// 	c.closeConnection()
-		// 	return nil
-		// }
+			// // Force handshake
+			// c.mu.Unlock()
+			// if err := conn.Handshake(); err != nil {
+			// 	c.Debugf("TLS handshake error: %v", err)
+			// 	c.sendErr("Secure Connection - TLS Required")
+			// 	c.closeConnection()
+			// 	return nil
+			// }
+		}
 	}
+
 	// The connection may have been closed
 	if c.nc == nil {
 		c.mu.Unlock()

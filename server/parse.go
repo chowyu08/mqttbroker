@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-
-	"github.com/surgemq/message"
 )
 
 const (
@@ -31,15 +29,7 @@ func (c *client) parse(buf []byte) {
 	switch msgType {
 	case CONNECT:
 		fmt.Println("Recv connect message..........")
-		connack := message.NewConnackMessage()
-		connack.SetReturnCode(message.ConnectionAccepted)
-		buf := make([]byte, connack.Len())
-		_, err := connack.Encode(buf)
-		if err != nil {
-			//glog.Debugf("Write error: %v", err)
-			fmt.Println("connect error,", err)
-		}
-		c.nc.Write(buf)
+		c.ProcessConnect(buf)
 	case PUBLISH:
 		fmt.Println("Recv publish message..........")
 	case SUBSCRIBE:
@@ -48,7 +38,7 @@ func (c *client) parse(buf []byte) {
 		fmt.Println("Recv PING message..........")
 	case DISCONNECT:
 		fmt.Println("Recv DISCONNECT message.......")
-		// c.Close()
+		c.nc.Close()
 	}
 }
 func getMessageBuffer(c io.Closer) ([]byte, error) {
@@ -71,14 +61,10 @@ func getMessageBuffer(c io.Closer) ([]byte, error) {
 	for {
 		// If we have read 5 bytes and still not done, then there's a problem.
 		if l > 5 {
-			return nil, fmt.Errorf("connect/getMessage: 4th byte of remaining length has continuation bit set")
+			return nil, fmt.Errorf("server/parse: 4th byte of remaining length has continuation bit set")
 		}
 		n, err := conn.Read(b[0:])
-		if n == 0 {
-			continue
-		}
 		if err != nil {
-			//glog.Debugf("Read error: %v", err)
 			return nil, err
 		}
 		buf = append(buf, b...)

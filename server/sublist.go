@@ -34,7 +34,7 @@ const slCacheMax = 1024
 // A result structure better optimized for queue subs.
 type SublistResult struct {
 	psubs []*subscription
-	qsubs [][]*subscription // don't make this a map, too expensive to iterate
+	qsubs []*subscription // don't make this a map, too expensive to iterate
 }
 
 // A Sublist stores and efficiently retrieves subscriptions.
@@ -54,7 +54,7 @@ type Sublist struct {
 type node struct {
 	next  *level
 	psubs []*subscription
-	qsubs [][]*subscription
+	qsubs []*subscription
 }
 
 // A level represents a group of nodes and special pointers to
