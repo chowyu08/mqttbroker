@@ -2,6 +2,7 @@ package server
 
 import (
 	"net"
+	"sync"
 	"sync/atomic"
 )
 
@@ -16,8 +17,9 @@ const (
 type client struct {
 	typ int
 	cid uint64
-	srv Server
+	srv *Server
 	nc  net.Conn
+	mu  sync.Mutex
 }
 type subscription struct {
 	client  *client
@@ -31,7 +33,7 @@ func (c *client) initClient() {
 	c.cid = atomic.AddUint64(&s.gcid, 1)
 }
 func (c *client) readLoop() {
-	if nc == nil {
+	if c.nc == nil {
 		return
 	}
 	for {

@@ -38,12 +38,12 @@ type Server struct {
 	mu            sync.Mutex
 	listener      net.Listener
 	routeListener net.Listener
-	clients       map[uint64]client
-	sl            Sublist
+	clients       map[uint64]*client
+	sl            *Sublist
 }
 
 func New() *Server {
-	info = Info{
+	info := Info{
 		ID:          GenUniqueId(),
 		Port:        1883,
 		ClusterPort: 1993,
@@ -52,7 +52,7 @@ func New() *Server {
 	}
 	return &Server{
 		info:    info,
-		clients: make(map[uint64]client),
+		clients: make(map[uint64]*client),
 		sl:      NewSublist(),
 	}
 }
@@ -69,7 +69,7 @@ func (s *Server) Start() {
 	s.ClientAcceptLoop()
 }
 func (s *Server) ClientAcceptLoop() {
-	hp = ":" + strconv.FormatUint(s.info.Port, 10)
+	hp := ":" + strconv.FormatUint(s.info.Port, 10)
 	l, e := net.Listen("tcp", hp)
 	if e != nil {
 		log.Info("\tserver/server.go: Error listening on port: %s, %q", hp, e)
@@ -87,7 +87,7 @@ func (s *Server) ClientAcceptLoop() {
 				if tmpDelay > ACCEPT_MAX_SLEEP {
 					tmpDelay = ACCEPT_MAX_SLEEP
 				}
-			} else if s.isRunning() {
+			} else if s.running {
 				log.Error("\tserver/server.go: Accept error: %v", err)
 			}
 			continue
@@ -98,7 +98,7 @@ func (s *Server) ClientAcceptLoop() {
 		})
 	}
 }
-func (s *Server) createClient(conn *net.Conn) *client {
+func (s *Server) createClient(conn net.Conn) *client {
 	c := &client{srv: s, nc: conn}
 	c.initClient()
 	s.mu.Lock()

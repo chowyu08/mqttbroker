@@ -27,13 +27,19 @@ const (
 )
 
 func (c *client) parse(buf []byte) {
-	msgType := uint8(msg[0] & 0xF0 >> 4)
+	msgType := uint8(buf[0] & 0xF0 >> 4)
 	switch msgType {
 	case CONNECT:
 		fmt.Println("Recv connect message..........")
-		connMsg := message.NewConnectMessage()
-		_, err := connMsg.Decode(msg)
-		// fmt.Println(connMsg.String())
+		connack := message.NewConnackMessage()
+		connack.SetReturnCode(message.ConnectionAccepted)
+		buf := make([]byte, connack.Len())
+		_, err := connack.Encode(buf)
+		if err != nil {
+			//glog.Debugf("Write error: %v", err)
+			fmt.Println("connect error,", err)
+		}
+		c.nc.Write(buf)
 	case PUBLISH:
 		fmt.Println("Recv publish message..........")
 	case SUBSCRIBE:
