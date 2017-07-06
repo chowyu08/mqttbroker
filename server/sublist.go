@@ -7,7 +7,6 @@
 package server
 
 import (
-	"bytes"
 	"errors"
 	"strings"
 	"sync"
@@ -132,15 +131,11 @@ func (s *Sublist) Insert(sub *subscription) error {
 		}
 		l = n.next
 	}
-	if sub.queue == nil {
+	if sub.queue == false {
 		n.psubs = append(n.psubs, sub)
 	} else {
 		// This is a queue subscription
-		if i := findQSliceForSub(sub, n.qsubs); i >= 0 {
-			n.qsubs[i] = append(n.qsubs[i], sub)
-		} else {
-			n.qsubs = append(n.qsubs, []*subscription{sub})
-		}
+		n.qsubs = append(n.qsubs, sub)
 	}
 
 	s.count++
@@ -157,10 +152,11 @@ func (s *Sublist) Insert(sub *subscription) error {
 func copyResult(r *SublistResult) *SublistResult {
 	nr := &SublistResult{}
 	nr.psubs = append([]*subscription(nil), r.psubs...)
-	for _, qr := range r.qsubs {
-		nqr := append([]*subscription(nil), qr...)
-		nr.qsubs = append(nr.qsubs, nqr)
-	}
+	nr.qsubs = append([]*subscription(nil), r.qsubs...)
+	// for _, qr := range r.qsubs {
+	// 	nqr := append([]*subscription(nil), qr...)
+	// 	nr.qsubs = append(nr.qsubs, nqr)
+	// }
 	return nr
 }
 
@@ -171,14 +167,15 @@ func (s *Sublist) addToCache(subject string, sub *subscription) {
 		if matchLiteral(k, subject) {
 			// Copy since others may have a reference.
 			nr := copyResult(r)
-			if sub.queue == nil {
+			if sub.queue == false {
 				nr.psubs = append(nr.psubs, sub)
 			} else {
-				if i := findQSliceForSub(sub, nr.qsubs); i >= 0 {
-					nr.qsubs[i] = append(nr.qsubs[i], sub)
-				} else {
-					nr.qsubs = append(nr.qsubs, []*subscription{sub})
-				}
+				nr.qsubs = append(nr.qsubs, sub)
+				// if i := findQSliceForSub(sub, nr.qsubs); i >= 0 {
+				// 	nr.qsubs[i] = append(nr.qsubs[i], sub)
+				// } else {
+				// 	nr.qsubs = append(nr.qsubs, []*subscription{sub})
+				// }
 			}
 			s.cache[k] = nr
 		}
@@ -244,34 +241,35 @@ func (s *Sublist) Match(subject string) *SublistResult {
 // This will add in a node's results to the total results.
 func addNodeToResults(n *node, results *SublistResult) {
 	results.psubs = append(results.psubs, n.psubs...)
-	for _, qr := range n.qsubs {
-		if len(qr) == 0 {
-			continue
-		}
-		// Need to find matching list in results
-		if i := findQSliceForSub(qr[0], results.qsubs); i >= 0 {
-			results.qsubs[i] = append(results.qsubs[i], qr...)
-		} else {
-			results.qsubs = append(results.qsubs, qr)
-		}
-	}
+	results.qsubs = append(results.qsubs, n.qsubs...)
+	// for _, qr := range n.qsubs {
+	// 	if len(qr) == 0 {
+	// 		continue
+	// 	}
+	// 	// Need to find matching list in results
+	// 	if i := findQSliceForSub(qr[0], results.qsubs); i >= 0 {
+	// 		results.qsubs[i] = append(results.qsubs[i], qr...)
+	// 	} else {
+	// 		results.qsubs = append(results.qsubs, qr)
+	// 	}
+	// }
 }
 
 // We do not use a map here since we want iteration to be past when
 // processing publishes in L1 on client. So we need to walk sequentially
 // for now. Keep an eye on this in case we start getting large number of
 // different queue subscribers for the same subject.
-func findQSliceForSub(sub *subscription, qsl [][]*subscription) int {
-	if sub.queue == nil {
-		return -1
-	}
-	for i, qr := range qsl {
-		if len(qr) > 0 && bytes.Equal(sub.queue, qr[0].queue) {
-			return i
-		}
-	}
-	return -1
-}
+// func findQSliceForSub(sub *subscription, qsl [][]*subscription) int {
+// 	if sub.queue == nil {
+// 		return -1
+// 	}
+// 	for i, qr := range qsl {
+// 		if len(qr) > 0 && bytes.Equal(sub.queue, qr[0].queue) {
+// 			return i
+// 		}
+// 	}
+// 	return -1
+// }
 
 // matchLevel is used to recursively descend into the trie.
 func matchLevel(l *level, toks []string, results *SublistResult) {
@@ -431,25 +429,28 @@ func (s *Sublist) removeFromNode(n *node, sub *subscription) (found bool) {
 	if n == nil {
 		return false
 	}
-	if sub.queue == nil {
+	if sub.queue == false {
 		n.psubs, found = removeSubFromList(sub, n.psubs)
+		return found
+	} else {
+		n.qsubs, found = removeSubFromList(sub, n.qsubs)
 		return found
 	}
 
-	// We have a queue group subscription here
-	if i := findQSliceForSub(sub, n.qsubs); i >= 0 {
-		n.qsubs[i], found = removeSubFromList(sub, n.qsubs[i])
-		if len(n.qsubs[i]) == 0 {
-			last := len(n.qsubs) - 1
-			n.qsubs[i] = n.qsubs[last]
-			n.qsubs[last] = nil
-			n.qsubs = n.qsubs[:last]
-			if len(n.qsubs) == 0 {
-				n.qsubs = nil
-			}
-		}
-		return found
-	}
+	// // We have a queue group subscription here
+	// if i := findQSliceForSub(sub, n.qsubs); i >= 0 {
+	// 	n.qsubs[i], found = removeSubFromList(sub, n.qsubs[i])
+	// 	if len(n.qsubs[i]) == 0 {
+	// 		last := len(n.qsubs) - 1
+	// 		n.qsubs[i] = n.qsubs[last]
+	// 		n.qsubs[last] = nil
+	// 		n.qsubs = n.qsubs[:last]
+	// 		if len(n.qsubs) == 0 {
+	// 			n.qsubs = nil
+	// 		}
+	// 	}
+	// 	return found
+	// }
 	return false
 }
 

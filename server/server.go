@@ -72,6 +72,7 @@ func (s *Server) Start() {
 			s.AcceptLoop(ROUTER)
 		})
 	}
+	<-make(chan bool)
 
 }
 func (s *Server) AcceptLoop(typ int) {
@@ -87,7 +88,7 @@ func (s *Server) AcceptLoop(typ int) {
 		log.Error("\tserver/server.go: Error listening on port: %s, %q", hp, e)
 		return
 	}
-	log.Info("\tListen on port in %s ", hp)
+	log.Info("\tListen on port: ", hp)
 	tmpDelay := 10 * ACCEPT_MIN_SLEEP
 	for {
 		conn, err := l.Accept()

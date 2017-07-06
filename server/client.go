@@ -58,19 +58,25 @@ func (c *client) closeConnection() {
 	}
 }
 func (c *client) ProcessSubscribe(buf []byte) {
+
+	var topics [][]byte
+	var qos []byte
+	srv := c.srv
+
 	suback := message.NewSubackMessage()
 	msg := message.NewSubscribeMessage()
 	_, err := msg.Decode(buf)
+
 	if err != nil {
 		log.Error("\tserver/client.go: Decode Subscribe Message error: ", err)
 		suback.AddReturnCode(message.QosFailure)
 		goto subback
 	}
+	topics = msg.Topics()
+	qos = msg.Qos()
+
 	suback.SetPacketId(msg.PacketId())
 
-	topics := msg.Topics()
-	qos := msg.Qos()
-	srv := c.srv
 	for i, t := range topics {
 		sub := &subscription{
 			subject: t,
@@ -102,7 +108,7 @@ func (c *client) ProcessConnect(msg []byte) {
 		c.closeConnection()
 		return
 	}
-
+	srv := c.srv
 	connack := message.NewConnackMessage()
 
 	if version := connMsg.Version(); version != 0x04 && version != 0x03 {
@@ -114,7 +120,7 @@ func (c *client) ProcessConnect(msg []byte) {
 	}
 	c.mqInfo = connMsg
 	c.clientID = string(connMsg.ClientId())
-	srv := c.srv
+
 	if c.typ == CLIENT {
 		srv.clients[c.cid] = c
 	}
