@@ -3,7 +3,6 @@ package server
 import (
 	"net"
 	"sync"
-	"sync/atomic"
 
 	log "github.com/cihub/seelog"
 	"github.com/surgemq/message"
@@ -15,18 +14,24 @@ const (
 	CLIENT = iota
 	// ROUTER is another router in the cluster.
 	ROUTER
+	//REMOTE is the router connect to other cluster
+	REMOTE
 )
 
 type MQInfo *message.ConnectMessage
 
 type client struct {
 	typ      int
-	cid      uint64
 	srv      *Server
 	nc       net.Conn
 	mu       sync.Mutex
 	clientID string
 	mqInfo   MQInfo
+	route    *route
+}
+type route struct {
+	remoteID string
+	url      string
 }
 type subscription struct {
 	client  *client
@@ -36,8 +41,6 @@ type subscription struct {
 }
 
 func (c *client) initClient() {
-	s := c.srv
-	c.cid = atomic.AddUint64(&s.gcid, 1)
 }
 func (c *client) readLoop() {
 	if c.nc == nil {
@@ -122,7 +125,14 @@ func (c *client) ProcessConnect(msg []byte) {
 	c.clientID = string(connMsg.ClientId())
 
 	if c.typ == CLIENT {
-		srv.clients[c.cid] = c
+		srv.clients[c.clientID] = c
+	}
+	if c.typ == ROUTER {
+		srv.startGoRoutine(func() {
+			srv.routers[c.clientID] = c
+
+		})
+
 	}
 	connack.SetReturnCode(message.ConnectionAccepted)
 connback:

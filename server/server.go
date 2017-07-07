@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"io"
 	"net"
-	"strconv"
 	"sync"
 	"time"
 
@@ -17,43 +16,51 @@ import (
 const (
 	// ACCEPT_MIN_SLEEP is the minimum acceptable sleep times on temporary errors.
 	ACCEPT_MIN_SLEEP = 100 * time.Millisecond
-
 	// ACCEPT_MAX_SLEEP is the maximum acceptable sleep times on temporary errors
 	ACCEPT_MAX_SLEEP = 10 * time.Second
+	// DEFAULT_ROUTE_CONNECT Route solicitation intervals.
+	DEFAULT_ROUTE_CONNECT = 2 * time.Second
 )
 
 type Info struct {
-	ID          string
-	Port        uint64
-	ClusterPort uint64
-	TLSRequired bool
+	Host    string
+	Port    string
+	Cluster ClusterInfo
+	TLS     TLSConfig
+}
+type TLSConfig struct {
+	Host        string
+	Port        string
 	TLSVerify   bool
+	TLSRequired bool
+	CaFile      string
+	CertFile    string
+	KeyFile     string
+}
+type ClusterInfo struct {
+	Host    string
+	Port    string
+	Routers []string
 }
 
 type Server struct {
-	gcid          uint64
-	grid          uint64
-	info          Info
+	ID            string
+	info          *Info
 	running       bool
 	mu            sync.Mutex
 	listener      net.Listener
 	routeListener net.Listener
-	clients       map[uint64]*client
-	routes        map[uint64]*client
+	clients       map[string]*client
+	routers       map[string]*client
 	sl            *Sublist
 }
 
-func New() *Server {
-	info := Info{
-		ID:          GenUniqueId(),
-		Port:        1883,
-		ClusterPort: 1993,
-		TLSVerify:   false,
-		TLSRequired: false,
-	}
+func New(info *Info) *Server {
 	return &Server{
+		ID:      GenUniqueId(),
 		info:    info,
-		clients: make(map[uint64]*client),
+		clients: make(map[string]*client),
+		routers: make(map[string]*client),
 		sl:      NewSublist(),
 	}
 }
@@ -62,30 +69,53 @@ func (s *Server) Start() {
 	s.mu.Lock()
 	s.running = true
 	s.mu.Unlock()
-	if s.info.Port != 0 {
+	if s.info.Port != "" {
 		s.startGoRoutine(func() {
 			s.AcceptLoop(CLIENT)
 		})
 	}
-	if s.info.ClusterPort != 0 {
+	if s.info.Cluster.Port != "" {
 		s.startGoRoutine(func() {
 			s.AcceptLoop(ROUTER)
+		})
+	}
+	if len(s.info.Cluster.Routers) < 1 {
+		s.startGoRoutine(func() {
+			s.ConnectToRouters()
 		})
 	}
 	<-make(chan bool)
 
 }
+func (s *Server) ConnectToRouters() {
+	for i := 0; i < len(s.info.Cluster.Routers); i++ {
+		s.connectRouter(s.info.Cluster.Routers[i])
+	}
+}
+func (s *Server) connectRouter(url string) {
+	for s.running {
+		conn, err := net.Dial("tcp", url)
+		if err != nil {
+			log.Error("\tserver/server.go: Error trying to connect to route: ", err)
+			select {
+			case <-time.After(DEFAULT_ROUTE_CONNECT):
+				continue
+			}
+		}
+		s.createClient(conn, REMOTE)
+		return
+	}
+}
 func (s *Server) AcceptLoop(typ int) {
 	var hp string
 	if typ == CLIENT {
-		hp = ":" + strconv.FormatUint(s.info.Port, 10)
+		hp = s.info.Host + ":" + s.info.Port
 	} else if typ == ROUTER {
-		hp = ":" + strconv.FormatUint(s.info.ClusterPort, 10)
+		hp = s.info.Cluster.Host + ":" + s.info.Cluster.Port
 	}
-
 	l, e := net.Listen("tcp", hp)
 	if e != nil {
-		log.Error("\tserver/server.go: Error listening on port: %s, %q", hp, e)
+		log.Error("\tserver/server.go: Error listening on ", hp, e)
 		return
 	}
 	log.Info("\tListen on port: ", hp)
@@ -125,8 +155,8 @@ func (s *Server) createClient(conn net.Conn, typ int) *client {
 
 	// Re-Grab lock
 	c.mu.Lock()
-	if c.typ != ROUTER {
-		tlsRequired := s.info.TLSRequired
+	if c.typ == CLIENT {
+		tlsRequired := s.info.TLS.TLSRequired
 		if tlsRequired {
 			// c.nc = tls.Server(c.nc, s.opts.TLSConfig)
 			// conn := c.nc.(*tls.Conn)

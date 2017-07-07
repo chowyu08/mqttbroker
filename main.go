@@ -7,6 +7,10 @@ import (
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	srv := server.New()
+	info, err := server.LoadConfig()
+	if err != nil {
+		panic(err)
+	}
+	srv := server.New(info)
 	srv.Start()
 }
