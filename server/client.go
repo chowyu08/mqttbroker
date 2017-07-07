@@ -130,7 +130,8 @@ func (c *client) ProcessConnect(msg []byte) {
 	if c.typ == ROUTER {
 		srv.startGoRoutine(func() {
 			srv.routers[c.clientID] = c
-
+			remoteID := string(connMsg.Username())
+			remoteURL := string(connMsg.Password())
 		})
 
 	}

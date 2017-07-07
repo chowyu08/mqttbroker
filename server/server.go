@@ -11,6 +11,7 @@ import (
 	"time"
 
 	log "github.com/cihub/seelog"
+	"github.com/surgemq/message"
 )
 
 const (
@@ -52,6 +53,7 @@ type Server struct {
 	routeListener net.Listener
 	clients       map[string]*client
 	routers       map[string]*client
+	remotes       map[string]*client
 	sl            *Sublist
 }
 
@@ -181,6 +183,13 @@ func (s *Server) createClient(conn net.Conn, typ int) *client {
 	if c.nc == nil {
 		c.mu.Unlock()
 		return c
+	}
+	if c.typ == REMOTE {
+		connMsg := message.NewConnectMessage()
+		connMsg.SetUsername([]byte(s.ID))
+		connMsg.SetClientId([]byte(GenUniqueId()))
+		connMsg.SetPassword() //
+		c.Write(connMsg.Encode(dst))
 	}
 	s.startGoRoutine(func() { c.readLoop() })
 	c.mu.Unlock()
