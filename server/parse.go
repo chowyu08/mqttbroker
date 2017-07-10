@@ -27,6 +27,9 @@ const (
 func (c *client) parse(buf []byte) {
 	msgType := uint8(buf[0] & 0xF0 >> 4)
 	switch msgType {
+	case CONNACK:
+		fmt.Println("Recv conack message..........")
+		c.ProcessConnAck(buf)
 	case CONNECT:
 		fmt.Println("Recv connect message..........")
 		c.ProcessConnect(buf)

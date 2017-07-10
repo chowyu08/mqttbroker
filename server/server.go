@@ -11,7 +11,6 @@ import (
 	"time"
 
 	log "github.com/cihub/seelog"
-	"github.com/surgemq/message"
 )
 
 const (
@@ -63,6 +62,7 @@ func New(info *Info) *Server {
 		info:    info,
 		clients: make(map[string]*client),
 		routers: make(map[string]*client),
+		remotes: make(map[string]*client),
 		sl:      NewSublist(),
 	}
 }
@@ -81,7 +81,7 @@ func (s *Server) Start() {
 			s.AcceptLoop(ROUTER)
 		})
 	}
-	if len(s.info.Cluster.Routers) < 1 {
+	if len(s.info.Cluster.Routers) > 0 {
 		s.startGoRoutine(func() {
 			s.ConnectToRouters()
 		})
@@ -91,10 +91,13 @@ func (s *Server) Start() {
 }
 func (s *Server) ConnectToRouters() {
 	for i := 0; i < len(s.info.Cluster.Routers); i++ {
-		s.connectRouter(s.info.Cluster.Routers[i])
+		url := s.info.Cluster.Routers[i]
+		s.startGoRoutine(func() {
+			s.connectRouter(url, "")
+		})
 	}
 }
-func (s *Server) connectRouter(url string) {
+func (s *Server) connectRouter(url, remoteID string) {
 	for s.running {
 		conn, err := net.Dial("tcp", url)
 		if err != nil {
@@ -104,7 +107,7 @@ func (s *Server) connectRouter(url string) {
 				continue
 			}
 		}
-		s.createClient(conn, REMOTE)
+		s.createClient(conn, REMOTE, url, remoteID)
 		return
 	}
 }
@@ -140,11 +143,11 @@ func (s *Server) AcceptLoop(typ int) {
 		}
 		tmpDelay = ACCEPT_MIN_SLEEP
 		s.startGoRoutine(func() {
-			s.createClient(conn, typ)
+			s.createClient(conn, typ, "", "")
 		})
 	}
 }
-func (s *Server) createClient(conn net.Conn, typ int) *client {
+func (s *Server) createClient(conn net.Conn, typ int, url, remoteID string) *client {
 	c := &client{srv: s, nc: conn, typ: typ}
 	c.initClient()
 	s.mu.Lock()
@@ -185,20 +188,43 @@ func (s *Server) createClient(conn net.Conn, typ int) *client {
 		return c
 	}
 	if c.typ == REMOTE {
-		connMsg := message.NewConnectMessage()
-		connMsg.SetUsername([]byte(s.ID))
-		connMsg.SetClientId([]byte(GenUniqueId()))
-		connMsg.SetPassword() //
-		c.Write(connMsg.Encode(dst))
+		c.remote.url = url
+		c.remote.remoteID = remoteID
+		c.SendConnect()
+		c.SendInfo()
 	}
 	s.startGoRoutine(func() { c.readLoop() })
 	c.mu.Unlock()
 	return c
 
 }
+func (s *Server) ReadLocalBrokerIP() []string {
+	var ip net.IP
+	urls := make([]string, 0, 1)
+	ifaces, _ := net.Interfaces()
+	for _, i := range ifaces {
+		addrs, _ := i.Addrs()
+		for _, addr := range addrs {
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			// Skip non global unicast addresses
+			if !ip.IsGlobalUnicast() || ip.IsUnspecified() {
+				ip = nil
+				continue
+			}
+			urls = append(urls, net.JoinHostPort(ip.String(), s.info.Cluster.Port))
+		}
+	}
+	return urls
+}
 func (s *Server) startGoRoutine(f func()) {
 	go f()
 }
+
 func GenUniqueId() string {
 	b := make([]byte, 48)
 	if _, err := io.ReadFull(rand.Reader, b); err != nil {
@@ -208,4 +234,26 @@ func GenUniqueId() string {
 	h.Write([]byte(base64.URLEncoding.EncodeToString(b)))
 	return hex.EncodeToString(h.Sum(nil))
 	// return GetMd5String()
+}
+
+func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
+	exist := false
+	for _, v := range s.remotes {
+		if v.remote.url == url {
+			if v.remote.remoteID == "" || v.remote.remoteID != remoteID {
+				v.remote.remoteID = remoteID
+			}
+			exist = true
+		}
+	}
+	if !exist {
+		s.startGoRoutine(func() {
+			s.connectRouter(url, remoteID)
+		})
+	}
+}
+func (s *Server) BroadcastSubscribeMessage(buf []byte) {
+	for _, r := range s.routers {
+		r.nc.Write(buf)
+	}
 }
