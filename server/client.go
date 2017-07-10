@@ -149,7 +149,6 @@ connback:
 	buf := make([]byte, connack.Len())
 	_, err1 := connack.Encode(buf)
 	if err1 != nil {
-		//glog.Debugf("Write error: %v", err)
 		log.Error("\tserver/client.go: connect error,", err1)
 	}
 	c.nc.Write(buf)
@@ -221,9 +220,10 @@ func (c *client) ProcessPublish(msg []byte) {
 		c.closeConnection()
 		return
 	}
+	topic := string(pubMsg.Topic())
 	s := c.srv
 	//process info message
-	if c.typ == ROUTER && string(pubMsg.Topic()) == BROKER_INFO_TOPIC {
+	if c.typ == ROUTER && topic == BROKER_INFO_TOPIC {
 		remoteID := gjson.GetBytes(pubMsg.Payload(), "remoteID").String()
 		url := gjson.GetBytes(pubMsg.Payload(), "url").String()
 		if remoteID == "" {
@@ -234,5 +234,61 @@ func (c *client) ProcessPublish(msg []byte) {
 		return
 	}
 	//process normal publish message
+	switch pubMsg.QoS() {
+	case message.QosExactlyOnce:
+		resp := message.NewPubrecMessage()
+		resp.SetPacketId(pubMsg.PacketId())
+		err := c.SendMessage(resp)
+		if err != nil {
+			log.Error("\tserver/client.go: send pubrec error, ", err)
+		}
+	case message.QosAtLeastOnce:
+		resp := message.NewPubackMessage()
+		resp.SetPacketId(pubMsg.PacketId())
 
+		if err := c.SendMessage(resp); err != nil {
+			log.Error("\tserver/client.go: send puback error, ", err)
+		}
+		c.ProcessPublishMessage(msg, topic)
+
+	case message.QosAtMostOnce:
+		c.ProcessPublishMessage(msg, topic)
+	}
+}
+func (c *client) ProcessPublishMessage(buf []byte, topic string) {
+	s := c.srv
+	r := s.sl.Match(topic)
+	if len(r.qsubs) == 0 && len(r.psubs) == 0 {
+		return
+	}
+	for _, sub := range r.psubs {
+		if sub.client.typ == ROUTER {
+			if c.typ == ROUTER {
+				continue
+			}
+			s.startGoRoutine(func() {
+				_, err := sub.client.nc.Write(buf)
+				if err != nil {
+					log.Error("\tserver/client.go: process message error, the clientID is ", sub.client.clientID)
+				}
+			})
+		}
+	}
+	for _, qsub := range r.qsubs {
+		if qsub.client.typ == ROUTER {
+			if c.typ == ROUTER {
+				continue
+			}
+			s.startGoRoutine(func() {
+				_, err := qsub.client.nc.Write(buf)
+				if err != nil {
+					log.Error("\tserver/client.go: process message error, the clientID is ", qsub.client.clientID)
+				}
+			})
+		}
+	}
+}
+func (c *client) SendBuffer(buf []byte) error {
+	_, err := c.nc.Write(buf)
+	return err
 }

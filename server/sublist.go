@@ -28,7 +28,7 @@ var (
 )
 
 // cacheMax is used to bound limit the frontend cache
-const slCacheMax = 1024
+const slCacheMax = 10240
 
 // A result structure better optimized for queue subs.
 type SublistResult struct {
