@@ -257,10 +257,13 @@ func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
 func (s *Server) BroadcastSubscribeMessage(buf []byte) {
 	// log.Info("remotes: ", s.remotes)
 	for _, r := range s.remotes {
-		r.nc.Write(buf)
+		r.writeBuffer(buf)
 	}
 }
 func (s *Server) SendLocalSubsToRouter(c *client) {
+	if len(s.clients) < 1 {
+		return
+	}
 	subMsg := message.NewSubscribeMessage()
 	s.mu.Lock()
 	for _, client := range s.clients {
@@ -276,10 +279,8 @@ func (s *Server) SendLocalSubsToRouter(c *client) {
 	}
 	s.mu.Unlock()
 
-	buf := make([]byte, subMsg.Len())
-	_, err := subMsg.Encode(buf)
+	err := c.writeMessage(subMsg)
 	if err != nil {
-		log.Error("\tserver/server.go: Send LocalSubs To Router err :", err)
+		log.Error("\tserver/server.go: Send localsubs To Router error :", err)
 	}
-	c.nc.Write(buf)
 }

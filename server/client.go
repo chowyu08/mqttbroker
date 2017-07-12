@@ -56,35 +56,29 @@ func (c *client) SendInfo() {
 	infoMsg.SetPayload([]byte(info))
 	infoMsg.SetQoS(0)
 	infoMsg.SetRetain(false)
-	err := c.SendMessage(infoMsg)
+	err := c.writeMessage(infoMsg)
 	if err != nil {
 		log.Error("\tserver/client.go: send info message error, ", err)
 	}
 
 }
+
 func (c *client) SendConnect() {
 	clientID := GenUniqueId()
 	c.clientID = clientID
 	connMsg := message.NewConnectMessage()
 	connMsg.SetClientId([]byte(clientID))
 	connMsg.SetVersion(0x04)
-	err := c.SendMessage(connMsg)
+	err := c.writeMessage(connMsg)
 	if err != nil {
 		log.Error("\tserver/client.go: send connect message error, ", err)
 	}
 }
-func (c *client) SendMessage(msg message.Message) error {
-	buf := make([]byte, msg.Len())
-	_, err := msg.Encode(buf)
-	if err != nil {
-		return err
-	}
-	_, err = c.nc.Write(buf)
-	return err
-}
+
 func (c *client) initClient() {
 	c.subs = make(map[string]*subscription)
 }
+
 func (c *client) readLoop() {
 	if c.nc == nil {
 		return
@@ -155,12 +149,10 @@ func (c *client) ProcessConnect(msg []byte) {
 	}
 	connack.SetReturnCode(message.ConnectionAccepted)
 connback:
-	buf := make([]byte, connack.Len())
-	_, err1 := connack.Encode(buf)
+	err1 := c.writeMessage(connack)
 	if err1 != nil {
-		log.Error("\tserver/client.go: connect error,", err1)
+		log.Error("\tserver/client.go: send connack error, ", err1)
 	}
-	c.nc.Write(buf)
 }
 
 func (c *client) ProcessSubscribe(buf []byte) {
@@ -206,7 +198,7 @@ func (c *client) ProcessSubscribe(buf []byte) {
 
 	}
 	if err := suback.AddReturnCodes(retcodes); err != nil {
-		log.Error("\tserver/client.go: return suback error, ", err)
+		log.Error("\tserver/client.go: add return suback code error, ", err)
 		return
 	}
 	if c.typ == CLIENT {
@@ -216,12 +208,33 @@ func (c *client) ProcessSubscribe(buf []byte) {
 	}
 
 subback:
-	b := make([]byte, suback.Len())
-	_, err1 := suback.Encode(b)
+	err1 := c.writeMessage(suback)
 	if err1 != nil {
-		log.Error("\tserver/client.go: subscribe error,", err1)
+		log.Error("\tserver/client.go: send suback error, ", err1)
 	}
-	c.nc.Write(b)
+}
+
+func (c *client) ProcessUnSubscribe(msg []byte) {
+	unsub := message.NewUnsubscribeMessage()
+	_, err := unsub.Decode(msg)
+	if err != nil {
+		log.Error("\tserver/client.go: Decode UnSubscribe Message error: ", err)
+		c.closeConnection()
+		return
+	}
+	topics := unsub.Topics()
+	for _, t := range topics {
+		//DO UnSub
+		log.Info(t)
+	}
+
+	resp := message.NewUnsubackMessage()
+	resp.SetPacketId(unsub.PacketId())
+
+	err1 := c.writeMessage(resp)
+	if err1 != nil {
+		log.Error("\tserver/client.go: send ubsuback error, ", err1)
+	}
 }
 
 func (c *client) ProcessPublish(msg []byte) {
@@ -284,7 +297,7 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 		}
 
 		s.startGoRoutine(func() {
-			_, err := sub.client.nc.Write(buf)
+			err := sub.client.writeBuffer(buf)
 			if err != nil {
 				log.Error("\tserver/client.go: process message error, the clientID is ", sub.client.clientID)
 			}
@@ -305,14 +318,21 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 	// 	}
 	// }
 }
-func (c *client) SendBuffer(buf []byte) error {
+func (c *client) writeBuffer(buf []byte) error {
 	_, err := c.nc.Write(buf)
 	return err
 }
 
+func (c *client) writeMessage(msg message.Message) error {
+	buf := make([]byte, msg.Len())
+	_, err := msg.Encode(buf)
+	if err != nil {
+		return err
+	}
+	return c.writeBuffer(buf)
+}
+
 func (c *client) ProcessPing() {
-	pingMsg := message.NewPingrespMessage()
-	buf := make([]byte, pingMsg.Len())
-	pingMsg.Encode(buf)
-	c.nc.Write(buf)
+	respMsg := message.NewPingrespMessage()
+	c.writeMessage(respMsg)
 }
