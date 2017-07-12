@@ -45,6 +45,7 @@ func (c *client) parse(buf []byte) {
 		log.Info("Recv suback message.....")
 	case UNSUBSCRIBE:
 		log.Info("Recv unsubscribe message.....")
+		c.ProcessUnSubscribe(buf)
 	case UNSUBACK:
 		log.Info("Recv unsuback message.....")
 	case PINGREQ:
@@ -54,7 +55,7 @@ func (c *client) parse(buf []byte) {
 		log.Info("Recv PINGRESP message..........")
 	case DISCONNECT:
 		log.Info("Recv DISCONNECT message.......")
-		c.nc.Close()
+		c.Close()
 	}
 }
 func getMessageBuffer(c io.Closer) ([]byte, error) {

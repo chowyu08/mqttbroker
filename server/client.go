@@ -86,15 +86,16 @@ func (c *client) readLoop() {
 	for {
 		buf, err := getMessageBuffer(c.nc)
 		if err != nil {
-			c.closeConnection()
+			c.Close()
 			break
 		}
 		c.parse(buf)
 	}
 }
-func (c *client) closeConnection() {
+func (c *client) Close() {
 	if c.nc != nil {
 		c.nc.Close()
+		c = nil
 	}
 }
 
@@ -103,13 +104,13 @@ func (c *client) ProcessConnAck(buf []byte) {
 	_, err := ackMsg.Decode(buf)
 	if err != nil {
 		log.Error("\tserver/client.go: Decode Connack Message error: ", err)
-		c.closeConnection()
+		c.Close()
 		return
 	}
 	rc := ackMsg.ReturnCode()
 	if rc != message.ConnectionAccepted {
 		log.Error("\tserver/client.go: Connect error with the returnCode is: ", rc)
-		c.closeConnection()
+		c.Close()
 		return
 	}
 	//save remote info and send local subs
@@ -125,7 +126,7 @@ func (c *client) ProcessConnect(msg []byte) {
 	_, err := connMsg.Decode(msg)
 	if err != nil {
 		log.Error("\tserver/client.go: Decode Connection Message error: ", err)
-		c.closeConnection()
+		c.Close()
 		return
 	}
 	srv := c.srv
@@ -219,7 +220,7 @@ func (c *client) ProcessUnSubscribe(msg []byte) {
 	_, err := unsub.Decode(msg)
 	if err != nil {
 		log.Error("\tserver/client.go: Decode UnSubscribe Message error: ", err)
-		c.closeConnection()
+		c.Close()
 		return
 	}
 	topics := unsub.Topics()
@@ -268,7 +269,7 @@ func (c *client) ProcessPublish(msg []byte) {
 	_, err := pubMsg.Decode(msg)
 	if err != nil {
 		log.Error("\tserver/client.go: Decode Publish Message error: ", err)
-		c.closeConnection()
+		c.Close()
 		return
 	}
 	topic := string(pubMsg.Topic())
