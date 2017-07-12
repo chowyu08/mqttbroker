@@ -13,12 +13,14 @@ import (
 
 const (
 	BROKER_INFO_TOPIC = "broker001info/brokerinfo"
+)
+const (
 	// CLIENT is an end user.
-	CLIENT = iota
+	CLIENT = 0
 	// ROUTER is another router in the cluster.
-	ROUTER
+	ROUTER = 1
 	//REMOTE is the router connect to other cluster
-	REMOTE
+	REMOTE = 2
 )
 
 type MQInfo *message.ConnectMessage
@@ -47,7 +49,8 @@ func (c *client) SendInfo() {
 	infoMsg := message.NewPublishMessage()
 	infoMsg.SetTopic([]byte(BROKER_INFO_TOPIC))
 	localIP := strings.Split(c.nc.LocalAddr().String(), ":")[0]
-	info := fmt.Sprintf(`{"remoteID":"%s","url":"%s"}`, c.srv.ID, localIP)
+	ipaddr := localIP + ":" + c.srv.info.Cluster.Port
+	info := fmt.Sprintf(`{"remoteID":"%s","url":"%s"}`, c.srv.ID, ipaddr)
 	log.Info("remoteInfo: ", info)
 	infoMsg.SetPayload([]byte(info))
 	infoMsg.SetQoS(0)
@@ -176,21 +179,18 @@ func (c *client) ProcessSubscribe(buf []byte) {
 	suback.SetPacketId(msg.PacketId())
 
 	for i, t := range topics {
-		if IsValidSubject(string(t)) {
-			sub := &subscription{
-				subject: t,
-				qos:     qos[i],
-				client:  c,
-			}
-			err := srv.sl.Insert(sub)
-			if err != nil {
-				log.Error("\tserver/client.go: Insert subscription error: ", err)
-				retcodes = append(retcodes, message.QosFailure)
-			}
-			retcodes = append(retcodes, qos[i])
-		} else {
+		sub := &subscription{
+			subject: t,
+			qos:     qos[i],
+			client:  c,
+			queue:   false,
+		}
+		err := srv.sl.Insert(sub)
+		if err != nil {
+			log.Error("\tserver/client.go: Insert subscription error: ", err)
 			retcodes = append(retcodes, message.QosFailure)
 		}
+		retcodes = append(retcodes, qos[i])
 
 	}
 	if err := suback.AddReturnCodes(retcodes); err != nil {
@@ -209,7 +209,7 @@ subback:
 	if err1 != nil {
 		log.Error("\tserver/client.go: subscribe error,", err1)
 	}
-	c.nc.Write(buf)
+	c.nc.Write(b)
 }
 
 func (c *client) ProcessPublish(msg []byte) {
@@ -234,38 +234,43 @@ func (c *client) ProcessPublish(msg []byte) {
 		return
 	}
 	//process normal publish message
-	switch pubMsg.QoS() {
-	case message.QosExactlyOnce:
-		resp := message.NewPubrecMessage()
-		resp.SetPacketId(pubMsg.PacketId())
-		err := c.SendMessage(resp)
-		if err != nil {
-			log.Error("\tserver/client.go: send pubrec error, ", err)
-		}
-	case message.QosAtLeastOnce:
-		resp := message.NewPubackMessage()
-		resp.SetPacketId(pubMsg.PacketId())
+	c.ProcessPublishMessage(msg, topic)
+	// switch pubMsg.QoS() {
+	// case message.QosExactlyOnce:
+	// 	resp := message.NewPubrecMessage()
+	// 	resp.SetPacketId(pubMsg.PacketId())
+	// 	err := c.SendMessage(resp)
+	// 	if err != nil {
+	// 		log.Error("\tserver/client.go: send pubrec error, ", err)
+	// 	}
+	// case message.QosAtLeastOnce:
+	// 	resp := message.NewPubackMessage()
+	// 	resp.SetPacketId(pubMsg.PacketId())
 
-		if err := c.SendMessage(resp); err != nil {
-			log.Error("\tserver/client.go: send puback error, ", err)
-		}
-		c.ProcessPublishMessage(msg, topic)
+	// 	if err := c.SendMessage(resp); err != nil {
+	// 		log.Error("\tserver/client.go: send puback error, ", err)
+	// 	}
+	// 	c.ProcessPublishMessage(msg, topic)
 
-	case message.QosAtMostOnce:
-		c.ProcessPublishMessage(msg, topic)
-	}
+	// case message.QosAtMostOnce:
+	// 	c.ProcessPublishMessage(msg, topic)
+	// }
 }
 func (c *client) ProcessPublishMessage(buf []byte, topic string) {
+
 	s := c.srv
 	r := s.sl.Match(topic)
 	if len(r.qsubs) == 0 && len(r.psubs) == 0 {
 		return
 	}
+
 	for _, sub := range r.psubs {
 		if sub.client.typ == ROUTER {
 			if c.typ == ROUTER {
 				continue
 			}
+		}
+		if sub.client.typ == CLIENT {
 			s.startGoRoutine(func() {
 				_, err := sub.client.nc.Write(buf)
 				if err != nil {
@@ -274,19 +279,19 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 			})
 		}
 	}
-	for _, qsub := range r.qsubs {
-		if qsub.client.typ == ROUTER {
-			if c.typ == ROUTER {
-				continue
-			}
-			s.startGoRoutine(func() {
-				_, err := qsub.client.nc.Write(buf)
-				if err != nil {
-					log.Error("\tserver/client.go: process message error, the clientID is ", qsub.client.clientID)
-				}
-			})
-		}
-	}
+	// for _, qsub := range r.qsubs {
+	// 	if qsub.client.typ == ROUTER {
+	// 		if c.typ == ROUTER {
+	// 			continue
+	// 		}
+	// 		s.startGoRoutine(func() {
+	// 			_, err := qsub.client.nc.Write(buf)
+	// 			if err != nil {
+	// 				log.Error("\tserver/client.go: process message error, the clientID is ", qsub.client.clientID)
+	// 			}
+	// 		})
+	// 	}
+	// }
 }
 func (c *client) SendBuffer(buf []byte) error {
 	_, err := c.nc.Write(buf)

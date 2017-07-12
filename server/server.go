@@ -115,15 +115,17 @@ func (s *Server) AcceptLoop(typ int) {
 	var hp string
 	if typ == CLIENT {
 		hp = s.info.Host + ":" + s.info.Port
+		log.Info("\tListen on client port: ", hp)
 	} else if typ == ROUTER {
 		hp = s.info.Cluster.Host + ":" + s.info.Cluster.Port
+		log.Info("\tListen on cluster port: ", hp)
 	}
 	l, e := net.Listen("tcp", hp)
 	if e != nil {
 		log.Error("\tserver/server.go: Error listening on ", hp, e)
 		return
 	}
-	log.Info("\tListen on port: ", hp)
+
 	tmpDelay := 10 * ACCEPT_MIN_SLEEP
 	for {
 		conn, err := l.Accept()
@@ -253,7 +255,8 @@ func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
 	}
 }
 func (s *Server) BroadcastSubscribeMessage(buf []byte) {
-	for _, r := range s.routers {
+	// log.Info("remotes: ", s.remotes)
+	for _, r := range s.remotes {
 		r.nc.Write(buf)
 	}
 }

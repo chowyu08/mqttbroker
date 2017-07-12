@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+
+	log "github.com/cihub/seelog"
 )
 
 const (
@@ -28,19 +30,29 @@ func (c *client) parse(buf []byte) {
 	msgType := uint8(buf[0] & 0xF0 >> 4)
 	switch msgType {
 	case CONNACK:
-		fmt.Println("Recv conack message..........")
+		log.Info("Recv conack message..........")
 		c.ProcessConnAck(buf)
 	case CONNECT:
-		fmt.Println("Recv connect message..........")
+		log.Info("Recv connect message..........")
 		c.ProcessConnect(buf)
 	case PUBLISH:
-		fmt.Println("Recv publish message..........")
+		log.Info("Recv publish message..........")
+		c.ProcessPublish(buf)
 	case SUBSCRIBE:
-		fmt.Println("Recv subscribe message.....")
+		log.Info("Recv subscribe message.....")
+		c.ProcessSubscribe(buf)
+	case SUBACK:
+		log.Info("Recv suback message.....")
+	case UNSUBSCRIBE:
+		log.Info("Recv unsubscribe message.....")
+	case UNSUBACK:
+		log.Info("Recv unsuback message.....")
 	case PINGREQ:
-		fmt.Println("Recv PING message..........")
+		log.Info("Recv PINGREQ message..........")
+	case PINGRESP:
+		log.Info("Recv PINGRESP message..........")
 	case DISCONNECT:
-		fmt.Println("Recv DISCONNECT message.......")
+		log.Info("Recv DISCONNECT message.......")
 		c.nc.Close()
 	}
 }
