@@ -1,1 +1,41 @@
-# broker
+MQTT Broker 
+============
+
+# About
+this repository is a mqtt broker writting in golang, version support 3.1.1
+
+#Configure file
+~~~
+{
+	"port": "1883",
+	"host": "0.0.0.0",
+	"cluster": {
+		"host":"0.0.0.0",
+		"port": "1993",
+		"routers": ["127.0.0.1:1993"]
+	},
+	"tls":{
+		"port":"8883",
+		"host":"0.0.0.0",
+		"tlsVery":false,
+		"tlsRequired":true,
+		"cafile": "",
+		"certfile": "",
+		"keyfile": ""
+	}
+}
+~~~
+
+### Features and Future
+
+**Features**
+
+* Supports QOS 0 (1 and 2 Future) 
+* TLS Support
+* Broker Cluster
+* Supports will messages (Future) 
+* Supports retained messages (add/remove) (Future) 
+* $SYS topics (Future) 
+* Queue subscribe (Future) 
+* Better authentication modules (Future) 
+* Message re-delivery (DUP) (Future)
