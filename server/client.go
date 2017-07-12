@@ -223,9 +223,18 @@ func (c *client) ProcessUnSubscribe(msg []byte) {
 		return
 	}
 	topics := unsub.Topics()
+
 	for _, t := range topics {
-		//DO UnSub
-		log.Info(t)
+		var sub *subscription
+		ok := false
+
+		if sub, ok = c.subs[string(t)]; ok {
+			c.unsubscribe(sub)
+			if c.typ == CLIENT {
+				c.srv.BroadcastUnSubscribeMessage(msg)
+			}
+		}
+
 	}
 
 	resp := message.NewUnsubackMessage()
@@ -234,6 +243,23 @@ func (c *client) ProcessUnSubscribe(msg []byte) {
 	err1 := c.writeMessage(resp)
 	if err1 != nil {
 		log.Error("\tserver/client.go: send ubsuback error, ", err1)
+	}
+}
+
+func (c *client) unsubscribe(sub *subscription) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.subs, string(sub.subject))
+	if c.srv != nil {
+		c.srv.sl.Remove(sub)
+	}
+}
+
+func (c *client) ProcessPing() {
+	respMsg := message.NewPingrespMessage()
+	err := c.writeMessage(respMsg)
+	if err != nil {
+		log.Error("\tserver/client.go: send pingresp error, ", err)
 	}
 }
 
@@ -330,9 +356,4 @@ func (c *client) writeMessage(msg message.Message) error {
 		return err
 	}
 	return c.writeBuffer(buf)
-}
-
-func (c *client) ProcessPing() {
-	respMsg := message.NewPingrespMessage()
-	c.writeMessage(respMsg)
 }

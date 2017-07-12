@@ -260,6 +260,14 @@ func (s *Server) BroadcastSubscribeMessage(buf []byte) {
 		r.writeBuffer(buf)
 	}
 }
+
+func (s *Server) BroadcastUnSubscribeMessage(buf []byte) {
+	// log.Info("remotes: ", s.remotes)
+	for _, r := range s.remotes {
+		r.writeBuffer(buf)
+	}
+}
+
 func (s *Server) SendLocalSubsToRouter(c *client) {
 	if len(s.clients) < 1 {
 		return

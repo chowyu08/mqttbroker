@@ -77,7 +77,7 @@ func (s *Sublist) Insert(sub *subscription) error {
 	var n *node
 	for _, t := range tokens {
 		if len(t) == 0 {
-			return errors.New("Invalid Subject")
+			return errors.New("Invalid Topic")
 		}
 		n = l.nodes[t]
 		if n == nil {
@@ -110,6 +110,54 @@ func (s *Sublist) Insert(sub *subscription) error {
 	}
 	s.Unlock()
 	return nil
+}
+
+func (s *Sublist) Remove(sub *subscription) error {
+	tokens, err := validAndSpiltTopic(sub.subject)
+	if err != nil {
+		return err
+	}
+	s.Lock()
+	defer s.Unlock()
+
+	l := s.root
+	var n *node
+
+	for _, t := range tokens {
+		if len(t) == 0 {
+			return errors.New("Invalid Topic")
+		}
+		if l == nil {
+			return errors.New("Topic Not Found")
+		}
+		n = l.nodes[t]
+		if n != nil {
+			l = n.next
+		} else {
+			l = nil
+		}
+	}
+	if !s.removeFromNode(n, sub) {
+		return errors.New("No Matches subscription Found")
+	}
+	return nil
+
+}
+
+func (s *Sublist) removeFromNode(n *node, sub *subscription) (found bool) {
+	if n == nil {
+		return false
+	}
+
+	if sub.queue {
+		n.qsubs, found = removeSubFromList(sub, n.qsubs)
+		return found
+	} else {
+		n.psubs, found = removeSubFromList(sub, n.psubs)
+		return found
+	}
+
+	return false
 }
 
 func (s *Sublist) Match(subject string) *SublistResult {
