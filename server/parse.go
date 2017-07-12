@@ -49,6 +49,7 @@ func (c *client) parse(buf []byte) {
 		log.Info("Recv unsuback message.....")
 	case PINGREQ:
 		log.Info("Recv PINGREQ message..........")
+		c.ProcessPing()
 	case PINGRESP:
 		log.Info("Recv PINGRESP message..........")
 	case DISCONNECT:

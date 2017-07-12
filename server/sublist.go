@@ -109,7 +109,6 @@ func (s *Sublist) Insert(sub *subscription) error {
 		n.psubs = append(n.psubs, sub)
 	}
 	s.Unlock()
-	log.Info("sublist: ", s.root.nodes)
 	return nil
 }
 

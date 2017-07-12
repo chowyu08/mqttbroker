@@ -11,6 +11,7 @@ import (
 	"time"
 
 	log "github.com/cihub/seelog"
+	"github.com/surgemq/message"
 )
 
 const (
@@ -258,4 +259,27 @@ func (s *Server) BroadcastSubscribeMessage(buf []byte) {
 	for _, r := range s.remotes {
 		r.nc.Write(buf)
 	}
+}
+func (s *Server) SendLocalSubsToRouter(c *client) {
+	subMsg := message.NewSubscribeMessage()
+	s.mu.Lock()
+	for _, client := range s.clients {
+		client.mu.Lock()
+		subs := make([]*subscription, 0, len(client.subs))
+		for _, sub := range client.subs {
+			subs = append(subs, sub)
+		}
+		client.mu.Unlock()
+		for _, sub := range subs {
+			subMsg.AddTopic(sub.subject, sub.qos)
+		}
+	}
+	s.mu.Unlock()
+
+	buf := make([]byte, subMsg.Len())
+	_, err := subMsg.Encode(buf)
+	if err != nil {
+		log.Error("\tserver/server.go: Send LocalSubs To Router err :", err)
+	}
+	c.nc.Write(buf)
 }

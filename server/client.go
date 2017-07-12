@@ -33,6 +33,7 @@ type client struct {
 	clientID string
 	mqInfo   MQInfo
 	remote   remoteInfo
+	subs     map[string]*subscription
 }
 type remoteInfo struct {
 	remoteID string
@@ -82,6 +83,7 @@ func (c *client) SendMessage(msg message.Message) error {
 	return err
 }
 func (c *client) initClient() {
+	c.subs = make(map[string]*subscription)
 }
 func (c *client) readLoop() {
 	if c.nc == nil {
@@ -116,8 +118,12 @@ func (c *client) ProcessConnAck(buf []byte) {
 		c.closeConnection()
 		return
 	}
-	//save remote info
-	c.srv.remotes[c.clientID] = c
+	//save remote info and send local subs
+	s := c.srv
+	s.remotes[c.clientID] = c
+	s.startGoRoutine(func() {
+		s.SendLocalSubsToRouter(c)
+	})
 }
 
 func (c *client) ProcessConnect(msg []byte) {
@@ -179,16 +185,22 @@ func (c *client) ProcessSubscribe(buf []byte) {
 	suback.SetPacketId(msg.PacketId())
 
 	for i, t := range topics {
-		sub := &subscription{
-			subject: t,
-			qos:     qos[i],
-			client:  c,
-			queue:   false,
-		}
-		err := srv.sl.Insert(sub)
-		if err != nil {
-			log.Error("\tserver/client.go: Insert subscription error: ", err)
-			retcodes = append(retcodes, message.QosFailure)
+		if c.subs[string(t)] == nil {
+			sub := &subscription{
+				subject: t,
+				qos:     qos[i],
+				client:  c,
+				queue:   false,
+			}
+			c.subs[string(t)] = sub
+			err := srv.sl.Insert(sub)
+			if err != nil {
+				log.Error("\tserver/client.go: Insert subscription error: ", err)
+				retcodes = append(retcodes, message.QosFailure)
+			}
+		} else {
+			//if exist ,check whether qos change
+			c.subs[string(t)].qos = qos[i]
 		}
 		retcodes = append(retcodes, qos[i])
 
@@ -296,4 +308,11 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 func (c *client) SendBuffer(buf []byte) error {
 	_, err := c.nc.Write(buf)
 	return err
+}
+
+func (c *client) ProcessPing() {
+	pingMsg := message.NewPingrespMessage()
+	buf := make([]byte, pingMsg.Len())
+	pingMsg.Encode(buf)
+	c.nc.Write(buf)
 }
