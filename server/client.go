@@ -270,14 +270,14 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 				continue
 			}
 		}
-		if sub.client.typ == CLIENT {
-			s.startGoRoutine(func() {
-				_, err := sub.client.nc.Write(buf)
-				if err != nil {
-					log.Error("\tserver/client.go: process message error, the clientID is ", sub.client.clientID)
-				}
-			})
-		}
+
+		s.startGoRoutine(func() {
+			_, err := sub.client.nc.Write(buf)
+			if err != nil {
+				log.Error("\tserver/client.go: process message error, the clientID is ", sub.client.clientID)
+			}
+		})
+
 	}
 	// for _, qsub := range r.qsubs {
 	// 	if qsub.client.typ == ROUTER {

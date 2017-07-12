@@ -157,7 +157,6 @@ func (s *Server) createClient(conn net.Conn, typ int, url, remoteID string) *cli
 		s.mu.Unlock()
 		return c
 	}
-	// s.clients[c.cid] = c
 	s.mu.Unlock()
 
 	// Re-Grab lock
