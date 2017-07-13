@@ -169,8 +169,8 @@ func (c *client) ProcessSubscribe(buf []byte) {
 
 	if err != nil {
 		log.Error("\tserver/client.go: Decode Subscribe Message error: ", err)
-		suback.AddReturnCode(message.QosFailure)
-		goto subback
+		c.Close()
+		return
 	}
 	topics = msg.Topics()
 	qos = msg.Qos()
@@ -191,15 +191,16 @@ func (c *client) ProcessSubscribe(buf []byte) {
 				log.Error("\tserver/client.go: Insert subscription error: ", err)
 				retcodes = append(retcodes, message.QosFailure)
 			}
+			retcodes = append(retcodes, qos[i])
 		} else {
 			//if exist ,check whether qos change
 			c.subs[string(t)].qos = qos[i]
+			retcodes = append(retcodes, qos[i])
 		}
-		retcodes = append(retcodes, qos[i])
-
 	}
 	if err := suback.AddReturnCodes(retcodes); err != nil {
 		log.Error("\tserver/client.go: add return suback code error, ", err)
+		c.Close()
 		return
 	}
 	if c.typ == CLIENT {
@@ -208,10 +209,19 @@ func (c *client) ProcessSubscribe(buf []byte) {
 		})
 	}
 
-subback:
 	err1 := c.writeMessage(suback)
 	if err1 != nil {
 		log.Error("\tserver/client.go: send suback error, ", err1)
+	}
+	for _, t := range topics {
+		srv.startGoRoutine(func() {
+			bufs := srv.rl.Match(t)
+			for _, buf := range bufs {
+				if buf != nil && string(buf) != "" {
+					c.writeBuffer(buf)
+				}
+			}
+		})
 	}
 }
 
@@ -284,6 +294,14 @@ func (c *client) ProcessPublish(msg []byte) {
 		}
 		s.ValidAndProcessRemoteInfo(remoteID, url)
 		return
+	}
+	if pubMsg.Retain() {
+		s.startGoRoutine(func() {
+			err := s.rl.Insert(pubMsg.Topic(), msg)
+			if err != nil {
+				log.Error("\tserver/client.go: Insert Retain Message error: ", err)
+			}
+		})
 	}
 	//process normal publish message
 	c.ProcessPublishMessage(msg, topic)

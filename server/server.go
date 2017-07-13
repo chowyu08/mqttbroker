@@ -55,6 +55,7 @@ type Server struct {
 	routers       map[string]*client
 	remotes       map[string]*client
 	sl            *Sublist
+	rl            *RetainList
 }
 
 func New(info *Info) *Server {
@@ -65,6 +66,7 @@ func New(info *Info) *Server {
 		routers: make(map[string]*client),
 		remotes: make(map[string]*client),
 		sl:      NewSublist(),
+		rl:      NewRetainList(),
 	}
 }
 

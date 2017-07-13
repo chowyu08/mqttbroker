@@ -1,30 +1,130 @@
 package server
 
-func removeSubFromList(sub *subscription, sl []*subscription) ([]*subscription, bool) {
-	for i := 0; i < len(sl); i++ {
-		if sl[i] == sub {
-			last := len(sl) - 1
-			sl[i] = sl[last]
-			sl[last] = nil
-			sl = sl[:last]
-			return shrinkAsNeeded(sl), true
+import (
+	"bytes"
+	"errors"
+	"reflect"
+	"strings"
+)
+
+func SubscribeTopicCheckAndSpilt(subject []byte) ([]string, error) {
+
+	topic := string(subject)
+
+	if bytes.IndexByte(subject, '#') != -1 {
+		if bytes.IndexByte(subject, '#') != len(subject)-1 {
+			return nil, errors.New("Topic format error with index of #")
 		}
 	}
-	return sl, false
+
+	re := strings.Split(topic, "/")
+	for i, v := range re {
+		if i != 0 && i != (len(re)-1) {
+			if v == "" {
+				return nil, errors.New("Topic format error with index of //")
+			}
+			if strings.Contains(v, "+") && v != "+" {
+				return nil, errors.New("Topic format error with index of +")
+			}
+		} else {
+			if v == "" {
+				re[i] = "/"
+			}
+		}
+	}
+	return re, nil
+
+}
+func PublishTopicCheckAndSpilt(subject []byte) ([]string, error) {
+	if bytes.IndexByte(subject, '#') != -1 || bytes.IndexByte(subject, '+') != -1 {
+		return nil, errors.New("Publish Topic format error with + and #")
+	}
+	topic := string(subject)
+	re := strings.Split(topic, "/")
+	if re[0] == "" {
+		re[1] = "/" + re[1]
+		re = re[1:]
+	}
+	if re[len(re)-1] == "" {
+		re[len(re)-2] = re[len(re)-2] + "/"
+		re = re[:len(re)-1]
+	}
+	return re, nil
 }
 
-// Checks if we need to do a resize. This is for very large growth then
-// subsequent return to a more normal size from unsubscribe.
-func shrinkAsNeeded(sl []*subscription) []*subscription {
-	lsl := len(sl)
-	csl := cap(sl)
-	// Don't bother if list not too big
-	if csl <= 8 {
-		return sl
+// func validAndSpiltTopic(subject []byte) ([]string, error) {
+// 	if bytes.IndexByte(subject, '#') != -1 {
+// 		if bytes.IndexByte(subject, '#') != len(subject)-1 {
+// 			return nil, errors.New("Topic format error with index of #")
+// 		}
+// 	}
+// 	topic := string(subject)
+// 	re := strings.Split(topic, "/")
+// 	if re[0] == "" {
+// 		re[1] = "/" + re[1]
+// 		re = re[1:]
+// 	}
+// 	if re[len(re)-1] == "" {
+// 		if strings.Contains(re[len(re)-2], "+") {
+// 			if re[len(re)-2] != "+" && re[len(re)-2] != "/+" {
+// 				return nil, errors.New("Topic format error with index of +")
+// 			}
+// 		}
+// 		re[len(re)-2] = re[len(re)-2] + "/"
+// 		re = re[:len(re)-1]
+// 	}
+// 	for i, v := range re {
+// 		if i == 0 || i == len(re)-1 {
+// 			continue
+// 		}
+// 		if strings.Contains(v, "+") && v != "+" {
+// 			return nil, errors.New("Topic format error with index of +")
+// 		}
+// 	}
+// 	return re, nil
+// }
+
+func equal(k1, k2 interface{}) bool {
+	if reflect.TypeOf(k1) != reflect.TypeOf(k2) {
+		return false
 	}
-	pFree := float32(csl-lsl) / float32(csl)
-	if pFree > 0.50 {
-		return append([]*subscription(nil), sl...)
+
+	if reflect.ValueOf(k1).Kind() == reflect.Func {
+		return &k1 == &k2
 	}
-	return sl
+
+	if k1 == k2 {
+		return true
+	}
+	switch k1 := k1.(type) {
+	case string:
+		return k1 == k2.(string)
+	case int64:
+		return k1 == k2.(int64)
+	case int32:
+		return k1 == k2.(int32)
+	case int16:
+		return k1 == k2.(int16)
+	case int8:
+		return k1 == k2.(int8)
+	case int:
+		return k1 == k2.(int)
+	case float32:
+		return k1 == k2.(float32)
+	case float64:
+		return k1 == k2.(float64)
+	case uint:
+		return k1 == k2.(uint)
+	case uint8:
+		return k1 == k2.(uint8)
+	case uint16:
+		return k1 == k2.(uint16)
+	case uint32:
+		return k1 == k2.(uint32)
+	case uint64:
+		return k1 == k2.(uint64)
+	case uintptr:
+		return k1 == k2.(uintptr)
+	}
+	return false
 }

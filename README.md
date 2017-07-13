@@ -30,11 +30,11 @@ this repository is a mqtt broker writting in golang, version support 3.1.1
 
 **Features**
 
-* Supports QOS 0 (1 and 2 Future) 
+* Supports QOS 0  (1 and 2 Future) 
 * TLS Support
 * Broker Cluster
+* Supports retained messages
 * Supports will messages (Future) 
-* Supports retained messages (add/remove) (Future) 
 * $SYS topics (Future) 
 * Queue subscribe (Future) 
 * Better authentication modules (Future) 
