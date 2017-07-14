@@ -1,8 +1,15 @@
 MQTT Broker 
 ============
 
-# About
+## About
 this repository is a mqtt broker writting in golang, version support 3.1.1
+
+## RUNNING
+```bash
+$ git clone https://github.com/chowyu08/broker.git
+$ cd broker
+$ go run main.go
+```
 
 ### Configure file
 ~~~
