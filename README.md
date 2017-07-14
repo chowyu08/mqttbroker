@@ -32,9 +32,8 @@ this repository is a mqtt broker writting in golang, version support 3.1.1
 | ------------- |---------------------------------|
 | $queue/       | mosquitto_sub -t ‘$queue/topic’ |
 
-### Features and Future
 
-**Features**
+### Features and Future
 
 * Supports QOS 0  (1 and 2 Future) 
 
