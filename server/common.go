@@ -35,19 +35,23 @@ func SubscribeTopicCheckAndSpilt(subject []byte) ([]string, error) {
 	return re, nil
 
 }
+
 func PublishTopicCheckAndSpilt(subject []byte) ([]string, error) {
 	if bytes.IndexByte(subject, '#') != -1 || bytes.IndexByte(subject, '+') != -1 {
 		return nil, errors.New("Publish Topic format error with + and #")
 	}
 	topic := string(subject)
 	re := strings.Split(topic, "/")
-	if re[0] == "" {
-		re[1] = "/" + re[1]
-		re = re[1:]
-	}
-	if re[len(re)-1] == "" {
-		re[len(re)-2] = re[len(re)-2] + "/"
-		re = re[:len(re)-1]
+	for i, v := range re {
+		if i != 0 && i != (len(re)-1) {
+			if v == "" {
+				return nil, errors.New("Topic format error with index of //")
+			}
+		} else {
+			if v == "" {
+				re[i] = "/"
+			}
+		}
 	}
 	return re, nil
 }

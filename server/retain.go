@@ -1,9 +1,6 @@
 package server
 
-import (
-	"errors"
-	"sync"
-)
+import "sync"
 
 type RetainList struct {
 	sync.RWMutex
@@ -15,6 +12,9 @@ type rlevel struct {
 type rnode struct {
 	next *rlevel
 	msg  []byte
+}
+type RetainResult struct {
+	msg [][]byte
 }
 
 func newRNode() *rnode {
@@ -35,14 +35,12 @@ func (r *RetainList) Insert(topic, buf []byte) error {
 	if err != nil {
 		return err
 	}
+	// log.Info("insert tokens:", tokens)
 	r.Lock()
 
 	l := r.root
 	var n *rnode
 	for _, t := range tokens {
-		if len(t) == 0 {
-			return errors.New("Invalid Publish Topic")
-		}
 		n = l.nodes[t]
 		if n == nil {
 			n = newRNode()
@@ -54,7 +52,6 @@ func (r *RetainList) Insert(topic, buf []byte) error {
 		l = n.next
 	}
 	n.msg = buf
-
 	r.Unlock()
 	return nil
 }
@@ -65,22 +62,23 @@ func (r *RetainList) Match(topic []byte) [][]byte {
 	if err != nil {
 		return nil
 	}
-	var results [][]byte
+	results := &RetainResult{}
 
 	r.Lock()
 	l := r.root
 	matchRLevel(l, tokens, results)
 	r.Unlock()
-
-	return results
+	// log.Info("results: ", results)
+	return results.msg
 
 }
-func matchRLevel(l *rlevel, toks []string, results [][]byte) {
+func matchRLevel(l *rlevel, toks []string, results *RetainResult) {
 	var n *rnode
 	for i, t := range toks {
 		if l == nil {
 			return
 		}
+		// log.Info("l info :", l.nodes)
 		if t == "#" {
 			for _, n := range l.nodes {
 				n.GetAll(results)
@@ -88,33 +86,13 @@ func matchRLevel(l *rlevel, toks []string, results [][]byte) {
 		}
 		if t == "+" {
 			for _, n := range l.nodes {
-				matchRLevel(n.next, toks[i+1:], results)
+				if len(t[i+1:]) == 0 {
+					results.msg = append(results.msg, n.msg)
+				} else {
+					matchRLevel(n.next, toks[i+1:], results)
+				}
 			}
 		}
-
-		// if t == "/+" {
-		// 	for tp, n := range l.nodes {
-		// 		if strings.Index(tp, "/") == 0 {
-		// 			matchRLevel(n.next, toks[i+1:], results)
-		// 		}
-		// 	}
-		// }
-
-		// if t == "/+/" {
-		// 	for tp, n := range l.nodes {
-		// 		r, _ := regexp.Compile("/([a-z]+)/")
-		// 		if r.MatchString(tp) {
-		// 			results = append(results, n.msg)
-		// 		}
-		// 	}
-		// }
-		// if t == "/#" {
-		// 	for tp, n := range l.nodes {
-		// 		if strings.Index(tp, "/") == 0 {
-		// 			n.GetAll(results)
-		// 		}
-		// 	}
-		// }
 
 		n = l.nodes[t]
 		if n != nil {
@@ -124,13 +102,14 @@ func matchRLevel(l *rlevel, toks []string, results [][]byte) {
 		}
 	}
 	if n != nil {
-		results = append(results, n.msg)
+		results.msg = append(results.msg, n.msg)
 	}
 }
 
-func (r *rnode) GetAll(results [][]byte) {
+func (r *rnode) GetAll(results *RetainResult) {
+	// log.Info("node 's message: ", string(r.msg))
 	if r.msg != nil && string(r.msg) != "" {
-		results = append(results, r.msg)
+		results.msg = append(results.msg, r.msg)
 	}
 	l := r.next
 	for _, n := range l.nodes {

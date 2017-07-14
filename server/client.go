@@ -217,6 +217,7 @@ func (c *client) ProcessSubscribe(buf []byte) {
 		srv.startGoRoutine(func() {
 			bufs := srv.rl.Match(t)
 			for _, buf := range bufs {
+				// log.Info("process retain  message: ", string(buf))
 				if buf != nil && string(buf) != "" {
 					c.writeBuffer(buf)
 				}
@@ -295,6 +296,7 @@ func (c *client) ProcessPublish(msg []byte) {
 		s.ValidAndProcessRemoteInfo(remoteID, url)
 		return
 	}
+
 	if pubMsg.Retain() {
 		s.startGoRoutine(func() {
 			err := s.rl.Insert(pubMsg.Topic(), msg)
@@ -344,7 +346,7 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 		s.startGoRoutine(func() {
 			err := sub.client.writeBuffer(buf)
 			if err != nil {
-				log.Error("\tserver/client.go: process message error, the clientID is ", sub.client.clientID)
+				log.Error("\tserver/client.go: process message error,  ", err)
 			}
 		})
 

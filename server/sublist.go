@@ -87,7 +87,7 @@ func (s *Sublist) Insert(sub *subscription) error {
 		//check qsub is already exist
 		for i := range n.qsubs {
 			if equal(n.qsubs[i], sub) {
-				n.qsubs[i].qos = sub.qos
+				n.qsubs[i] = sub
 				return nil
 			}
 		}
@@ -96,7 +96,7 @@ func (s *Sublist) Insert(sub *subscription) error {
 		//check psub is already exist
 		for i := range n.psubs {
 			if equal(n.psubs[i], sub) {
-				n.psubs[i].qos = sub.qos
+				n.psubs[i] = sub
 				return nil
 			}
 		}
@@ -162,53 +162,46 @@ func (s *Sublist) Match(subject string) *SublistResult {
 	result := &SublistResult{}
 
 	s.Lock()
-	matchLevel(s.root, tokens, result)
+	l := s.root
+	if len(tokens) > 0 {
+		if tokens[0] == "/" {
+			if _, exist := l.nodes["#"]; exist {
+				addNodeToResults(l.nodes["#"], result)
+			}
+			if _, exist := l.nodes["+"]; exist {
+				matchLevel(l.nodes["/"].next, tokens[1:], result)
+			}
+			if _, exist := l.nodes["/"]; exist {
+				matchLevel(l.nodes["/"].next, tokens[1:], result)
+			}
+		} else {
+			matchLevel(s.root, tokens, result)
+		}
+	}
+
 	s.Unlock()
 	// log.Info("SublistResult: ", result)
 	return result
 }
 
 func matchLevel(l *level, toks []string, results *SublistResult) {
-	var n *node
+	var swc, n *node
+	exist := false
 	for i, t := range toks {
 		if l == nil {
 			return
 		}
-		// match topic
-		// if strings.Count(t, "/") == 1 {
-		// 	if strings.Index(t, "/") == 0 {
-		// 		if _, exist := l.nodes["/#"]; exist {
-		// 			addNodeToResults(l.nodes["/#"], results)
-		// 		}
-		// 		if _, exist := l.nodes["/+"]; exist {
-		// 			matchLevel(l.nodes["/+"].next, toks[i+1:], results)
-		// 		}
-		// 	} else if strings.Index(t, "/") == 0 {
-		// 		if _, exist := l.nodes["+/"]; exist {
-		// 			addNodeToResults(l.nodes["+/"], results)
-		// 		}
-		// 	}
-		// } else if strings.Count(t, "/") == 2 {
-		// 	r, _ := regexp.Compile("/([a-z]+)/")
-		// 	if r.MatchString(t) {
-		// 		if _, exist := l.nodes["/+/"]; exist {
-		// 			addNodeToResults(l.nodes["+/"], results)
-		// 		}
-		// 	}
-		// } else {
-		// 	if _, exist := l.nodes["#"]; exist {
-		// 		addNodeToResults(l.nodes["#"], results)
-		// 	}
-		// 	if _, exist := l.nodes["+"]; exist {
-		// 		matchLevel(l.nodes["+"].next, toks[i+1:], results)
-		// 	}
-		// }
+
+		if _, exist = l.nodes["#"]; exist {
+			addNodeToResults(l.nodes["#"], results)
+		}
 		if t != "/" {
-			if _, exist := l.nodes["#"]; exist {
-				addNodeToResults(l.nodes["#"], results)
-			}
-			if _, exist := l.nodes["+"]; exist {
+			if swc, exist = l.nodes["+"]; exist {
 				matchLevel(l.nodes["+"].next, toks[i+1:], results)
+			}
+		} else {
+			if _, exist = l.nodes["+"]; exist {
+				addNodeToResults(l.nodes["+"], results)
 			}
 		}
 
@@ -222,8 +215,8 @@ func matchLevel(l *level, toks []string, results *SublistResult) {
 	if n != nil {
 		addNodeToResults(n, results)
 	}
-	if _, exist := l.nodes["+"]; exist {
-		addNodeToResults(l.nodes["+"], results)
+	if swc != nil {
+		addNodeToResults(n, results)
 	}
 }
 
