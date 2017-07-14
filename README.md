@@ -40,8 +40,10 @@ this repository is a mqtt broker writting in golang, version support 3.1.1
 
 * Supports will messages  
 
-* Queue subscribe  
- create a queue subscription
+* Queue subscribe 
+ 
+#### create a queue subscription
+
 | Prefix        | Examples                        |
 | ------------- |---------------------------------|
 | $queue/       | mosquitto_sub -t ‘$queue/topic’ |
