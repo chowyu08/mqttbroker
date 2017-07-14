@@ -25,7 +25,6 @@ $ go run main.go
 		"port":"8883",
 		"host":"0.0.0.0",
 		"tlsVery":false,
-		"tlsRequired":true,
 		"cafile": "",
 		"certfile": "",
 		"keyfile": ""

@@ -76,17 +76,22 @@ func (s *Server) Start() {
 	s.mu.Unlock()
 	if s.info.Port != "" {
 		s.startGoRoutine(func() {
-			s.AcceptLoop(CLIENT)
+			s.AcceptLoop(CLIENT, false)
 		})
 	}
 	if s.info.Cluster.Port != "" {
 		s.startGoRoutine(func() {
-			s.AcceptLoop(ROUTER)
+			s.AcceptLoop(ROUTER, false)
 		})
 	}
 	if len(s.info.Cluster.Routers) > 0 {
 		s.startGoRoutine(func() {
 			s.ConnectToRouters()
+		})
+	}
+	if s.info.TLS.TLSRequired {
+		s.startGoRoutine(func() {
+			s.AcceptLoop(CLIENT, true)
 		})
 	}
 	<-make(chan bool)
@@ -111,16 +116,22 @@ func (s *Server) connectRouter(url, remoteID string) {
 				continue
 			}
 		}
-		s.createClient(conn, REMOTE, url, remoteID)
+		s.createClient(conn, REMOTE, false, url, remoteID)
 		return
 	}
 }
 
-func (s *Server) AcceptLoop(typ int) {
+func (s *Server) AcceptLoop(typ int, tls bool) {
 	var hp string
 	if typ == CLIENT {
-		hp = s.info.Host + ":" + s.info.Port
-		log.Info("\tListen on client port: ", hp)
+		if tls {
+			hp = s.info.TLS.Host + ":" + s.info.TLS.Port
+			log.Info("\tListen tls on client port: ", hp)
+		} else {
+			hp = s.info.Host + ":" + s.info.Port
+			log.Info("\tListen on client port: ", hp)
+		}
+
 	} else if typ == ROUTER {
 		hp = s.info.Cluster.Host + ":" + s.info.Cluster.Port
 		log.Info("\tListen on cluster port: ", hp)
@@ -150,12 +161,12 @@ func (s *Server) AcceptLoop(typ int) {
 		}
 		tmpDelay = ACCEPT_MIN_SLEEP
 		s.startGoRoutine(func() {
-			s.createClient(conn, typ, "", "")
+			s.createClient(conn, typ, tls, "", "")
 		})
 	}
 }
 
-func (s *Server) createClient(conn net.Conn, typ int, url, remoteID string) *client {
+func (s *Server) createClient(conn net.Conn, typ int, tls bool, url, remoteID string) *client {
 	c := &client{srv: s, nc: conn, typ: typ}
 	c.initClient()
 	s.mu.Lock()
