@@ -34,6 +34,7 @@ type client struct {
 	mqInfo   MQInfo
 	remote   remoteInfo
 	subs     map[string]*subscription
+	willMsg  *message.PublishMessage
 }
 type remoteInfo struct {
 	remoteID string
@@ -112,6 +113,9 @@ func (c *client) Close() {
 			}
 		}
 	}
+	if c.willMsg != nil {
+		c.writeMessage(c.willMsg)
+	}
 
 	if c.nc != nil {
 		c.nc.Close()
@@ -164,7 +168,15 @@ func (c *client) ProcessConnect(msg []byte) {
 		goto connback
 	}
 	if connMsg.WillFlag() {
-		//do will topic
+		msg := message.NewPublishMessage()
+		msg.SetQoS(connMsg.WillQos())
+		msg.SetPayload(connMsg.WillMessage())
+		msg.SetRetain(connMsg.WillRetain())
+		msg.SetTopic(connMsg.WillTopic())
+		msg.SetDup(false)
+		c.willMsg = msg
+	} else {
+		c.willMsg = nil
 	}
 	c.mqInfo = connMsg
 	c.clientID = string(connMsg.ClientId())

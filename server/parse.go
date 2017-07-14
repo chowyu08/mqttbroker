@@ -56,6 +56,7 @@ func (c *client) parse(buf []byte) {
 		c.Close()
 	}
 }
+
 func getMessageBuffer(c io.Closer) ([]byte, error) {
 	if c == nil {
 		return nil, fmt.Errorf("conn is nil")
