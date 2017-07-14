@@ -4,7 +4,7 @@ MQTT Broker
 # About
 this repository is a mqtt broker writting in golang, version support 3.1.1
 
-#Configure file
+# Configure file
 ~~~
 {
 	"port": "1883",
@@ -26,6 +26,12 @@ this repository is a mqtt broker writting in golang, version support 3.1.1
 }
 ~~~
 
+# QUEUE SUBSCRIBE
+
+| Prefix        | Examples                        |
+| ------------- |---------------------------------|
+| $queue/       | mosquitto_sub -t ‘$queue/topic’ |
+
 ### Features and Future
 
 **Features**
@@ -41,9 +47,6 @@ this repository is a mqtt broker writting in golang, version support 3.1.1
 * Supports will messages  
 
 * Queue subscribe
-| Prefix        | Examples                        |
-| ------------- |---------------------------------|
-| $queue/       | mosquitto_sub -t ‘$queue/topic’ |
 
 * $SYS topics  
 
