@@ -93,10 +93,31 @@ func (c *client) readLoop() {
 	}
 }
 func (c *client) Close() {
+	c.mu.Lock()
+	log.Info("client closed with cid: ", c.clientID)
+	// log.Info("Client sub num: ", len(c.subs))
+	srv := c.srv
+	if srv != nil {
+		c.mu.Unlock()
+		srv.removeClient(c)
+		c.mu.Lock()
+		for _, sub := range c.subs {
+			// log.Info("remove Sub")
+			err := srv.sl.Remove(sub)
+			if err != nil {
+				log.Error("\tserver/client.go: closed client but remove sublist error, ", err)
+			}
+			if c.typ == CLIENT {
+				srv.BroadcastUnSubscribe(sub)
+			}
+		}
+	}
+
 	if c.nc != nil {
 		c.nc.Close()
-		c = nil
 	}
+	c.mu.Unlock()
+	c = nil
 }
 
 func (c *client) ProcessConnAck(buf []byte) {
@@ -104,13 +125,17 @@ func (c *client) ProcessConnAck(buf []byte) {
 	_, err := ackMsg.Decode(buf)
 	if err != nil {
 		log.Error("\tserver/client.go: Decode Connack Message error: ", err)
-		c.Close()
+		if c.typ == CLIENT {
+			c.Close()
+		}
 		return
 	}
 	rc := ackMsg.ReturnCode()
 	if rc != message.ConnectionAccepted {
 		log.Error("\tserver/client.go: Connect error with the returnCode is: ", rc)
-		c.Close()
+		if c.typ == CLIENT {
+			c.Close()
+		}
 		return
 	}
 	//save remote info and send local subs
@@ -126,7 +151,9 @@ func (c *client) ProcessConnect(msg []byte) {
 	_, err := connMsg.Decode(msg)
 	if err != nil {
 		log.Error("\tserver/client.go: Decode Connection Message error: ", err)
-		c.Close()
+		if c.typ == CLIENT {
+			c.Close()
+		}
 		return
 	}
 	srv := c.srv
@@ -169,7 +196,9 @@ func (c *client) ProcessSubscribe(buf []byte) {
 
 	if err != nil {
 		log.Error("\tserver/client.go: Decode Subscribe Message error: ", err)
-		c.Close()
+		if c.typ == CLIENT {
+			c.Close()
+		}
 		return
 	}
 	topics = msg.Topics()
@@ -178,7 +207,7 @@ func (c *client) ProcessSubscribe(buf []byte) {
 	suback.SetPacketId(msg.PacketId())
 
 	for i, t := range topics {
-		if c.subs[string(t)] == nil {
+		if _, exist := c.subs[string(t)]; !exist {
 			sub := &subscription{
 				subject: t,
 				qos:     qos[i],
@@ -197,10 +226,14 @@ func (c *client) ProcessSubscribe(buf []byte) {
 			c.subs[string(t)].qos = qos[i]
 			retcodes = append(retcodes, qos[i])
 		}
+
 	}
+
 	if err := suback.AddReturnCodes(retcodes); err != nil {
 		log.Error("\tserver/client.go: add return suback code error, ", err)
-		c.Close()
+		if c.typ == CLIENT {
+			c.Close()
+		}
 		return
 	}
 	if c.typ == CLIENT {
@@ -217,7 +250,7 @@ func (c *client) ProcessSubscribe(buf []byte) {
 		srv.startGoRoutine(func() {
 			bufs := srv.rl.Match(t)
 			for _, buf := range bufs {
-				// log.Info("process retain  message: ", string(buf))
+				log.Info("process retain  message: ", string(buf))
 				if buf != nil && string(buf) != "" {
 					c.writeBuffer(buf)
 				}
@@ -231,7 +264,9 @@ func (c *client) ProcessUnSubscribe(msg []byte) {
 	_, err := unsub.Decode(msg)
 	if err != nil {
 		log.Error("\tserver/client.go: Decode UnSubscribe Message error: ", err)
-		c.Close()
+		if c.typ == CLIENT {
+			c.Close()
+		}
 		return
 	}
 	topics := unsub.Topics()
@@ -242,11 +277,11 @@ func (c *client) ProcessUnSubscribe(msg []byte) {
 
 		if sub, ok = c.subs[string(t)]; ok {
 			c.unsubscribe(sub)
-			if c.typ == CLIENT {
-				c.srv.BroadcastUnSubscribeMessage(msg)
-			}
 		}
 
+	}
+	if c.typ == CLIENT {
+		c.srv.BroadcastUnSubscribeMessage(msg)
 	}
 
 	resp := message.NewUnsubackMessage()
@@ -280,7 +315,9 @@ func (c *client) ProcessPublish(msg []byte) {
 	_, err := pubMsg.Decode(msg)
 	if err != nil {
 		log.Error("\tserver/client.go: Decode Publish Message error: ", err)
-		c.Close()
+		if c.typ == CLIENT {
+			c.Close()
+		}
 		return
 	}
 	topic := string(pubMsg.Topic())
@@ -332,6 +369,7 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 
 	s := c.srv
 	r := s.sl.Match(topic)
+	log.Info("psubs num: ", len(r.psubs))
 	if len(r.qsubs) == 0 && len(r.psubs) == 0 {
 		return
 	}

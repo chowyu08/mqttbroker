@@ -234,6 +234,7 @@ func removeSubFromList(sub *subscription, sl []*subscription) ([]*subscription, 
 			sl[i] = sl[last]
 			sl[last] = nil
 			sl = sl[:last]
+			// log.Info("removeSubFromList success")
 			return shrinkAsNeeded(sl), true
 		}
 	}

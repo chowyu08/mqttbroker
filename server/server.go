@@ -100,6 +100,7 @@ func (s *Server) ConnectToRouters() {
 		})
 	}
 }
+
 func (s *Server) connectRouter(url, remoteID string) {
 	for s.running {
 		conn, err := net.Dial("tcp", url)
@@ -114,6 +115,7 @@ func (s *Server) connectRouter(url, remoteID string) {
 		return
 	}
 }
+
 func (s *Server) AcceptLoop(typ int) {
 	var hp string
 	if typ == CLIENT {
@@ -152,6 +154,7 @@ func (s *Server) AcceptLoop(typ int) {
 		})
 	}
 }
+
 func (s *Server) createClient(conn net.Conn, typ int, url, remoteID string) *client {
 	c := &client{srv: s, nc: conn, typ: typ}
 	c.initClient()
@@ -202,6 +205,7 @@ func (s *Server) createClient(conn net.Conn, typ int, url, remoteID string) *cli
 	return c
 
 }
+
 func (s *Server) ReadLocalBrokerIP() []string {
 	var ip net.IP
 	urls := make([]string, 0, 1)
@@ -225,8 +229,27 @@ func (s *Server) ReadLocalBrokerIP() []string {
 	}
 	return urls
 }
+
 func (s *Server) startGoRoutine(f func()) {
 	go f()
+}
+
+func (s *Server) removeClient(c *client) {
+	c.mu.Lock()
+	cid := c.clientID
+	typ := c.typ
+	c.mu.Unlock()
+
+	s.mu.Lock()
+	switch typ {
+	case CLIENT:
+		delete(s.clients, cid)
+	case ROUTER:
+		delete(s.routers, cid)
+	case REMOTE:
+		delete(s.remotes, cid)
+	}
+	s.mu.Unlock()
 }
 
 func GenUniqueId() string {
@@ -267,6 +290,18 @@ func (s *Server) BroadcastUnSubscribeMessage(buf []byte) {
 	// log.Info("remotes: ", s.remotes)
 	for _, r := range s.remotes {
 		r.writeBuffer(buf)
+	}
+}
+
+func (s *Server) BroadcastUnSubscribe(sub *subscription) {
+
+	topic := sub.subject
+
+	ubsub := message.NewUnsubscribeMessage()
+	ubsub.AddTopic(topic)
+
+	for _, r := range s.remotes {
+		r.writeMessage(ubsub)
 	}
 }
 
