@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 
-	"github.com/smallnest/rpcx/log"
+	log "github.com/cihub/seelog"
 )
 
 const (

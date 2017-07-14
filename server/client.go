@@ -2,9 +2,11 @@ package server
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	log "github.com/cihub/seelog"
 	"github.com/surgemq/message"
@@ -114,7 +116,34 @@ func (c *client) Close() {
 		}
 	}
 	if c.willMsg != nil {
-		c.writeMessage(c.willMsg)
+		topic := string(c.willMsg.Topic())
+		r := srv.sl.Match(topic)
+		if len(r.qsubs) == 0 && len(r.psubs) == 0 {
+			return
+		}
+
+		for _, sub := range r.psubs {
+			//only CLIENT HAVE WILL MESSAGE
+			srv.startGoRoutine(func() {
+				err := sub.client.writeMessage(c.willMsg)
+				if err != nil {
+					log.Error("\tserver/client.go: process will message for psub error,  ", err)
+				}
+			})
+
+		}
+		if len(r.qsubs) > 0 {
+			rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+			idx := rnd.Intn(len(r.qsubs))
+			qsub := r.qsubs[idx]
+			srv.startGoRoutine(func() {
+				err := qsub.client.writeMessage(c.willMsg)
+				if err != nil {
+					log.Error("\tserver/client.go: process will message for qsub error, ", err)
+				}
+			})
+		}
+
 	}
 
 	if c.nc != nil {
@@ -381,7 +410,7 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 
 	s := c.srv
 	r := s.sl.Match(topic)
-	log.Info("psubs num: ", len(r.psubs))
+	// log.Info("psubs num: ", len(r.psubs))
 	if len(r.qsubs) == 0 && len(r.psubs) == 0 {
 		return
 	}
@@ -396,25 +425,24 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 		s.startGoRoutine(func() {
 			err := sub.client.writeBuffer(buf)
 			if err != nil {
-				log.Error("\tserver/client.go: process message error,  ", err)
+				log.Error("\tserver/client.go: process message for psub error,  ", err)
 			}
 		})
 
 	}
-	// for _, qsub := range r.qsubs {
-	// 	if qsub.client.typ == ROUTER {
-	// 		if c.typ == ROUTER {
-	// 			continue
-	// 		}
-	// 		s.startGoRoutine(func() {
-	// 			_, err := qsub.client.nc.Write(buf)
-	// 			if err != nil {
-	// 				log.Error("\tserver/client.go: process message error, the clientID is ", qsub.client.clientID)
-	// 			}
-	// 		})
-	// 	}
-	// }
+	if len(r.qsubs) > 0 {
+		rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+		idx := rnd.Intn(len(r.qsubs))
+		qsub := r.qsubs[idx]
+		s.startGoRoutine(func() {
+			err := qsub.client.writeBuffer(buf)
+			if err != nil {
+				log.Error("\tserver/client.go: process message for qsub error, ", err)
+			}
+		})
+	}
 }
+
 func (c *client) writeBuffer(buf []byte) error {
 	_, err := c.nc.Write(buf)
 	return err
