@@ -249,11 +249,15 @@ func (c *client) ProcessSubscribe(buf []byte) {
 
 	for i, t := range topics {
 		if _, exist := c.subs[string(t)]; !exist {
+			queue := false
+			if strings.Index(string(t), "$queue/") == 0 {
+				queue = true
+			}
 			sub := &subscription{
 				subject: t,
 				qos:     qos[i],
 				client:  c,
-				queue:   false,
+				queue:   queue,
 			}
 			c.subs[string(t)] = sub
 			err := srv.sl.Insert(sub)

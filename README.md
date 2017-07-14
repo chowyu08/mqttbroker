@@ -31,11 +31,27 @@ this repository is a mqtt broker writting in golang, version support 3.1.1
 **Features**
 
 * Supports QOS 0  (1 and 2 Future) 
+
 * TLS Support
+
 * Broker Cluster
+
 * Supports retained messages
+
 * Supports will messages  
-* Queue subscribe (Future) 
+
+* Queue subscribe 
+`                             --------
+                             |        | --Msg1--> Subscriber1
+Publisher--Msg1,Msg2,Msg3--->| Broker | --Msg2--> Subscriber2
+                             |        | --Msg3--> Subscriber3
+                              --------`
+| Prefix        | Examples           |
+| ------------- |:-------------|
+| $queue/       | mosquitto_sub -t ‘$queue/topic’ |
+
 * $SYS topics  
+
 * Better authentication modules (Future) 
+
 * Message re-delivery (DUP) (Future)
