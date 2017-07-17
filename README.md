@@ -2,7 +2,8 @@ MQTT Broker
 ============
 
 ## About
-this repository is a mqtt broker writting in golang, version support 3.1.1
+this repository is a mqtt broker writting in golang, version support 3.1.1, and compatible
+for [eclipse paho client](https://github.com/eclipse?utf8=%E2%9C%93&q=mqtt&type=&language=)
 
 ## RUNNING
 ```bash
@@ -17,17 +18,17 @@ $ go run main.go
 	"port": "1883",
 	"host": "0.0.0.0",
 	"cluster": {
-		"host":"0.0.0.0",
+		"host": "0.0.0.0",
 		"port": "1993",
-		"routers": ["127.0.0.1:1993"]
+		"routers": []
 	},
-	"tls":{
-		"port":"8883",
-		"host":"0.0.0.0",
-		"tlsVery":false,
-		"cafile": "",
-		"certfile": "",
-		"keyfile": ""
+	"tlsPort": "8883",
+	"tlsHost": "0.0.0.0",
+	"tlsInfo": {
+		"verify": true,
+		"caFile": "tls/ca/cacert.pem",
+		"certFile": "tls/server/cert.pem",
+		"keyFile": "tls/server/key.pem"
 	}
 }
 ~~~

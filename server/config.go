@@ -1,7 +1,10 @@
 package server
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 
 	log "github.com/cihub/seelog"
@@ -23,34 +26,75 @@ func LoadConfig() (*Info, error) {
 		log.Error("\tserver/config.go: Unmarshal config file error: ", err)
 		return nil, err
 	}
-
-	if info.TLS.TLSRequired == true {
-		if info.TLS.CertFile == "" || info.TLS.KeyFile == "" {
+	log.Info("certfile:", info.TlsInfo.CertFile)
+	if info.TlsPort != "" {
+		if info.TlsInfo.CertFile == "" || info.TlsInfo.KeyFile == "" {
 			log.Error("\tserver/config.go: tls config error, no cert or key file.")
 			return nil, err
 		}
 
-		if info.TLS.Port == "" {
-			info.TLS.Port = "8883"
+		info.TLSConfig, err = NewTLSConfig(info.TlsInfo)
+		if err != nil {
+			log.Error("\tserver/config.go: new tlsConfig error: ", err)
+			return nil, err
 		}
-		if info.TLS.Host == "" {
-			info.TLS.Host = "0.0.0.0"
+
+		if info.TlsHost == "" {
+			info.TlsHost = "0.0.0.0"
 		}
 
 	}
 
-	// if info.Port == "" {
-	// 	info.Port = "1883"
-	// }
-	// if info.Host == "" {
-	// 	info.Host = "0.0.0.0"
-	// }
-	// if info.Cluster.Host == "" {
-	// 	info.Cluster.Host = "0.0.0.0"
-	// }
-	// if info.Cluster.Port == "" {
-	// 	info.Cluster.Port = "8883"
-	// }
+	if info.Port != "" {
+		if info.Host == "" {
+			info.Host = "0.0.0.0"
+		}
+	}
+
+	if info.Cluster.Port != "" {
+		if info.Cluster.Host == "" {
+			info.Cluster.Host = "0.0.0.0"
+		}
+	}
 
 	return &info, nil
+}
+
+func NewTLSConfig(tlsInfo TLSInfo) (*tls.Config, error) {
+
+	cert, err := tls.LoadX509KeyPair(tlsInfo.CertFile, tlsInfo.KeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("\tserver/config.go: error parsing X509 certificate/key pair: %v", err)
+	}
+	cert.Leaf, err = x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return nil, fmt.Errorf("\tserver/config.go: error parsing certificate: %v", err)
+	}
+
+	// Create TLSConfig
+	// We will determine the cipher suites that we prefer.
+	config := tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	// Require client certificates as needed
+	if tlsInfo.Verify {
+		config.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+	// Add in CAs if applicable.
+	if tlsInfo.CaFile != "" {
+		rootPEM, err := ioutil.ReadFile(tlsInfo.CaFile)
+		if err != nil || rootPEM == nil {
+			return nil, err
+		}
+		pool := x509.NewCertPool()
+		ok := pool.AppendCertsFromPEM([]byte(rootPEM))
+		if !ok {
+			return nil, fmt.Errorf("failed to parse root ca certificate")
+		}
+		config.ClientCAs = pool
+	}
+
+	return &config, nil
 }

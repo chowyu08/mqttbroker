@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/md5"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"io"
@@ -21,23 +22,26 @@ const (
 	ACCEPT_MAX_SLEEP = 10 * time.Second
 	// DEFAULT_ROUTE_CONNECT Route solicitation intervals.
 	DEFAULT_ROUTE_CONNECT = 2 * time.Second
+	// DEFAULT_TLS_TIMEOUT
+	DEFAULT_TLS_TIMEOUT = 10 * time.Second
 )
 
 type Info struct {
-	Host    string
-	Port    string
-	Cluster ClusterInfo
-	TLS     TLSConfig
+	Host      string
+	Port      string
+	Cluster   ClusterInfo
+	TlsInfo   TLSInfo
+	TlsHost   string
+	TlsPort   string
+	TLSConfig *tls.Config
 }
-type TLSConfig struct {
-	Host        string
-	Port        string
-	TLSVerify   bool
-	TLSRequired bool
-	CaFile      string
-	CertFile    string
-	KeyFile     string
+type TLSInfo struct {
+	Verify   bool
+	CaFile   string
+	CertFile string
+	KeyFile  string
 }
+
 type ClusterInfo struct {
 	Host    string
 	Port    string
@@ -89,7 +93,7 @@ func (s *Server) Start() {
 			s.ConnectToRouters()
 		})
 	}
-	if s.info.TLS.TLSRequired {
+	if s.info.TlsPort != "" {
 		s.startGoRoutine(func() {
 			s.AcceptLoop(CLIENT, true)
 		})
@@ -125,7 +129,7 @@ func (s *Server) AcceptLoop(typ int, tls bool) {
 	var hp string
 	if typ == CLIENT {
 		if tls {
-			hp = s.info.TLS.Host + ":" + s.info.TLS.Port
+			hp = s.info.TlsHost + ":" + s.info.TlsPort
 			log.Info("\tListen tls on client port: ", hp)
 		} else {
 			hp = s.info.Host + ":" + s.info.Port
@@ -166,7 +170,7 @@ func (s *Server) AcceptLoop(typ int, tls bool) {
 	}
 }
 
-func (s *Server) createClient(conn net.Conn, typ int, tls bool, url, remoteID string) *client {
+func (s *Server) createClient(conn net.Conn, typ int, iStls bool, url, remoteID string) *client {
 	c := &client{srv: s, nc: conn, typ: typ}
 	c.initClient()
 	s.mu.Lock()
@@ -179,24 +183,24 @@ func (s *Server) createClient(conn net.Conn, typ int, tls bool, url, remoteID st
 	// Re-Grab lock
 	c.mu.Lock()
 	if c.typ == CLIENT {
-		tlsRequired := s.info.TLS.TLSRequired
-		if tlsRequired {
-			// c.nc = tls.Server(c.nc, s.opts.TLSConfig)
-			// conn := c.nc.(*tls.Conn)
+		if iStls {
+			log.Info("\tserver/server.go: statting TLS Client connection handshake")
+			c.nc = tls.Server(c.nc, s.info.TLSConfig)
+			conn := c.nc.(*tls.Conn)
 
-			// // Setup the timeout
-			// ttl := secondsToDuration(s.opts.TLSTimeout)
-			// time.AfterFunc(ttl, func() { tlsTimeout(c, conn) })
-			// conn.SetReadDeadline(time.Now().Add(ttl))
+			// Setup the timeout
+			time.AfterFunc(DEFAULT_TLS_TIMEOUT, func() { tlsTimeout(c, conn) })
+			conn.SetReadDeadline(time.Now().Add(DEFAULT_TLS_TIMEOUT))
 
-			// // Force handshake
-			// c.mu.Unlock()
-			// if err := conn.Handshake(); err != nil {
-			// 	c.Debugf("TLS handshake error: %v", err)
-			// 	c.sendErr("Secure Connection - TLS Required")
-			// 	c.closeConnection()
-			// 	return nil
-			// }
+			// Force handshake
+			c.mu.Unlock()
+			if err := conn.Handshake(); err != nil {
+				log.Error("\tserver/server.go: TLS handshake error: ", err)
+				c.Close()
+				return nil
+			}
+			conn.SetReadDeadline(time.Time{})
+			c.mu.Lock()
 		}
 	}
 
@@ -215,6 +219,21 @@ func (s *Server) createClient(conn net.Conn, typ int, tls bool, url, remoteID st
 	c.mu.Unlock()
 	return c
 
+}
+
+func tlsTimeout(c *client, conn *tls.Conn) {
+	c.mu.Lock()
+	nc := c.nc
+	c.mu.Unlock()
+	// Check if already closed
+	if nc == nil {
+		return
+	}
+	cs := conn.ConnectionState()
+	if !cs.HandshakeComplete {
+		log.Error("\tserver/server.go: TLS handshake timeout")
+		c.Close()
+	}
 }
 
 func (s *Server) ReadLocalBrokerIP() []string {
