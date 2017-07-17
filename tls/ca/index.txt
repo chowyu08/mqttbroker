@@ -1,2 +1,0 @@
-V	180207083603Z		01	unknown	/CN=joy-VirtualBox/O=server
-V	180207083627Z		02	unknown	/CN=joy-VirtualBox/O=client
