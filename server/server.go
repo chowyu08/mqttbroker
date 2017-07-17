@@ -120,15 +120,20 @@ func (s *Server) connectRouter(url, remoteID string) {
 				continue
 			}
 		}
-		s.createClient(conn, REMOTE, false, url, remoteID)
+		info := &ClientInfo{
+			tlsRequire: false,
+			remoteID:   remoteID,
+			remoteurl:  url,
+		}
+		s.createClient(conn, REMOTE, info)
 		return
 	}
 }
 
-func (s *Server) AcceptLoop(typ int, tls bool) {
+func (s *Server) AcceptLoop(typ int, tlsRequire bool) {
 	var hp string
 	if typ == CLIENT {
-		if tls {
+		if tlsRequire {
 			hp = s.info.TlsHost + ":" + s.info.TlsPort
 			log.Info("\tListen tls on client port: ", hp)
 		} else {
@@ -165,14 +170,18 @@ func (s *Server) AcceptLoop(typ int, tls bool) {
 		}
 		tmpDelay = ACCEPT_MIN_SLEEP
 		s.startGoRoutine(func() {
-			s.createClient(conn, typ, tls, "", "")
+			info := &ClientInfo{
+				tlsRequire: tlsRequire,
+			}
+			s.createClient(conn, typ, info)
 		})
 	}
 }
 
-func (s *Server) createClient(conn net.Conn, typ int, iStls bool, url, remoteID string) *client {
-	c := &client{srv: s, nc: conn, typ: typ}
+func (s *Server) createClient(conn net.Conn, typ int, info *ClientInfo) *client {
+	c := &client{srv: s, nc: conn, typ: typ, info: info}
 	c.initClient()
+
 	s.mu.Lock()
 	if !s.running {
 		s.mu.Unlock()
@@ -183,7 +192,7 @@ func (s *Server) createClient(conn net.Conn, typ int, iStls bool, url, remoteID 
 	// Re-Grab lock
 	c.mu.Lock()
 	if c.typ == CLIENT {
-		if iStls {
+		if c.info.tlsRequire {
 			log.Info("\tserver/server.go: statting TLS Client connection handshake")
 			c.nc = tls.Server(c.nc, s.info.TLSConfig)
 			conn := c.nc.(*tls.Conn)
@@ -210,12 +219,11 @@ func (s *Server) createClient(conn net.Conn, typ int, iStls bool, url, remoteID 
 		return c
 	}
 	if c.typ == REMOTE {
-		c.remote.url = url
-		c.remote.remoteID = remoteID
 		c.SendConnect()
 		c.SendInfo()
 	}
-	s.startGoRoutine(func() { c.readLoop() })
+	c.startGoRoutine(func() { c.readLoop() })
+
 	c.mu.Unlock()
 	return c
 
@@ -296,9 +304,9 @@ func GenUniqueId() string {
 func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
 	exist := false
 	for _, v := range s.remotes {
-		if v.remote.url == url {
-			if v.remote.remoteID == "" || v.remote.remoteID != remoteID {
-				v.remote.remoteID = remoteID
+		if v.info.remoteurl == url {
+			if v.info.remoteID == "" || v.info.remoteID != remoteID {
+				v.info.remoteID = remoteID
 			}
 			exist = true
 		}

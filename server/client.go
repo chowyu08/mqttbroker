@@ -34,13 +34,14 @@ type client struct {
 	mu       sync.Mutex
 	clientID string
 	mqInfo   MQInfo
-	remote   remoteInfo
+	info     *ClientInfo
 	subs     map[string]*subscription
 	willMsg  *message.PublishMessage
 }
-type remoteInfo struct {
-	remoteID string
-	url      string
+type ClientInfo struct {
+	tlsRequire bool
+	remoteID   string
+	remoteurl  string
 }
 type subscription struct {
 	client  *client
@@ -80,6 +81,10 @@ func (c *client) SendConnect() {
 
 func (c *client) initClient() {
 	c.subs = make(map[string]*subscription)
+}
+
+func (c *client) startGoRoutine(f func()) {
+	go f()
 }
 
 func (c *client) readLoop() {

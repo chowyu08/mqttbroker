@@ -10,7 +10,7 @@
 	"tlsHost": "0.0.0.0",
 	"tlsInfo": {
 		"verify": true,
-		"caFile": "tls/testca/cacert.pem",
+		"caFile": "tls/ca/cacert.pem",
 		"certFile": "tls/server/cert.pem",
 		"keyFile": "tls/server/key.pem"
 	}

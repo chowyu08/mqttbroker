@@ -26,7 +26,7 @@ func LoadConfig() (*Info, error) {
 		log.Error("\tserver/config.go: Unmarshal config file error: ", err)
 		return nil, err
 	}
-	log.Info("certfile:", info.TlsInfo.CertFile)
+
 	if info.TlsPort != "" {
 		if info.TlsInfo.CertFile == "" || info.TlsInfo.KeyFile == "" {
 			log.Error("\tserver/config.go: tls config error, no cert or key file.")
