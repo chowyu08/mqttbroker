@@ -61,7 +61,7 @@ $ go run main.go
 * Message re-delivery (DUP) (Future)
 
 ## License
-* Copyright [2017] by Author
+* Copyright by Author
 
 * All rights reserved.
 
