@@ -25,20 +25,19 @@ const (
 	REMOTE = 2
 )
 
-type MQInfo *message.ConnectMessage
-
 type client struct {
 	typ      int
 	srv      *Server
 	nc       net.Conn
 	mu       sync.Mutex
 	clientID string
-	mqInfo   MQInfo
 	info     *ClientInfo
 	subs     map[string]*subscription
 	willMsg  *message.PublishMessage
 }
 type ClientInfo struct {
+	username   string
+	password   string
 	tlsRequire bool
 	remoteID   string
 	remoteurl  string
@@ -201,6 +200,11 @@ func (c *client) ProcessConnect(msg []byte) {
 		connack.SetReturnCode(message.ErrInvalidProtocolVersion)
 		goto connback
 	}
+
+	c.info.username = string(connMsg.Username())
+	c.info.password = string(connMsg.Password())
+	c.clientID = string(connMsg.ClientId())
+
 	if connMsg.WillFlag() {
 		msg := message.NewPublishMessage()
 		msg.SetQoS(connMsg.WillQos())
@@ -212,8 +216,6 @@ func (c *client) ProcessConnect(msg []byte) {
 	} else {
 		c.willMsg = nil
 	}
-	c.mqInfo = connMsg
-	c.clientID = string(connMsg.ClientId())
 
 	if c.typ == CLIENT {
 		srv.clients[c.clientID] = c

@@ -135,7 +135,7 @@ func (s *Server) AcceptLoop(typ int, tlsRequire bool) {
 	if typ == CLIENT {
 		if tlsRequire {
 			hp = s.info.TlsHost + ":" + s.info.TlsPort
-			log.Info("\tListen tls on client port: ", hp)
+			log.Info("\tListen on tls port: ", hp)
 		} else {
 			hp = s.info.Host + ":" + s.info.Port
 			log.Info("\tListen on client port: ", hp)
