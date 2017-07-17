@@ -59,3 +59,9 @@ $ go run main.go
 * Better authentication modules (Future) 
 
 * Message re-delivery (DUP) (Future)
+
+## License
+* Copyright [2017] by Author
+
+* All rights reserved.
+

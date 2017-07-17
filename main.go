@@ -1,3 +1,11 @@
+/*
+ * Copyright [2017] by Author
+ *
+ * All rights reserved.
+ *
+ * Contributors:
+ *    zhou yuyan
+ */
 package main
 
 import (
