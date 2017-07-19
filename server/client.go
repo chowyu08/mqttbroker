@@ -14,8 +14,11 @@ import (
 )
 
 const (
+	startBufSize = 512
 	// special pub topic for cluster info BrokerInfoTopic
 	BrokerInfoTopic = "broker001info/brokerinfo"
+	// DEFAULT_FLUSH_DEADLINE is the write/flush deadlines.
+	DEFAULT_FLUSH_DEADLINE = 2 * time.Second
 	// CLIENT is an end user.
 	CLIENT = 0
 	// ROUTER is another router in the cluster.
@@ -91,6 +94,7 @@ func (c *client) readLoop() {
 	if c.nc == nil {
 		return
 	}
+	c.nc.SetReadDeadline(time.Now().Add(time.Second * 5))
 	for {
 		buf, err := getMessageBuffer(c.nc)
 		if err != nil {
@@ -99,6 +103,7 @@ func (c *client) readLoop() {
 			break
 		}
 		c.parse(buf)
+
 	}
 }
 func (c *client) Close() {
@@ -458,7 +463,9 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 
 func (c *client) writeBuffer(buf []byte) error {
 	c.mu.Lock()
+	// c.nc.SetWriteDeadline(time.Now().Add(DEFAULT_WRITE_TIMEOUT))
 	_, err := c.nc.Write(buf)
+	// c.nc.SetWriteDeadline(time.Time{})
 	c.mu.Unlock()
 	return err
 }

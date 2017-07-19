@@ -224,6 +224,12 @@ func (s *Server) createClient(conn net.Conn, typ int, info *ClientInfo) *client 
 	}
 	s.startGoRoutine(func() { c.readLoop() })
 
+	// if c.info.tlsRequire {
+	// 	log.Debugf("TLS handshake complete")
+	// 	cs := c.nc.(*tls.Conn).ConnectionState()
+	// 	// log.Debugf("TLS version %s, cipher suite %s", tlsVersion(cs.Version), tlsCipher(cs.CipherSuite))
+	// }
+
 	c.mu.Unlock()
 	return c
 

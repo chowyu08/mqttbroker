@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 )
 
 const (
@@ -22,6 +23,10 @@ const (
 	PINGREQ
 	PINGRESP
 	DISCONNECT
+)
+const (
+	DEFAULT_READ_TIMEOUT  = 5 * time.Second
+	DEFAULT_WRITE_TIMEOUT = 5 * time.Second
 )
 
 func (c *client) parse(buf []byte) {
@@ -65,6 +70,7 @@ func getMessageBuffer(c io.Closer) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("conn type is nil")
 	}
+	// conn.SetReadDeadline(t)
 	var (
 		// the message buffer
 		buf []byte
