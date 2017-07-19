@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	// special topic for cluster info
-	BROKER_INFO_TOPIC = "broker001info/brokerinfo"
+	// special pub topic for cluster info BrokerInfoTopic
+	BrokerInfoTopic = "broker001info/brokerinfo"
 	// CLIENT is an end user.
 	CLIENT = 0
 	// ROUTER is another router in the cluster.
@@ -34,6 +34,8 @@ type client struct {
 	subs     map[string]*subscription
 	willMsg  *message.PublishMessage
 }
+
+//clientInfo eg: username and password
 type ClientInfo struct {
 	username   string
 	password   string
@@ -50,7 +52,7 @@ type subscription struct {
 
 func (c *client) SendInfo() {
 	infoMsg := message.NewPublishMessage()
-	infoMsg.SetTopic([]byte(BROKER_INFO_TOPIC))
+	infoMsg.SetTopic([]byte(BrokerInfoTopic))
 	localIP := strings.Split(c.nc.LocalAddr().String(), ":")[0]
 	ipaddr := localIP + ":" + c.srv.info.Cluster.Port
 	info := fmt.Sprintf(`{"remoteID":"%s","url":"%s"}`, c.srv.ID, ipaddr)
@@ -375,7 +377,7 @@ func (c *client) ProcessPublish(msg []byte) {
 	topic := string(pubMsg.Topic())
 	s := c.srv
 	//process info message
-	if c.typ == ROUTER && topic == BROKER_INFO_TOPIC {
+	if c.typ == ROUTER && topic == BrokerInfoTopic {
 		remoteID := gjson.GetBytes(pubMsg.Payload(), "remoteID").String()
 		url := gjson.GetBytes(pubMsg.Payload(), "url").String()
 		if remoteID == "" {
