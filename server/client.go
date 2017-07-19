@@ -14,9 +14,8 @@ import (
 )
 
 const (
+	// special topic for cluster info
 	BROKER_INFO_TOPIC = "broker001info/brokerinfo"
-)
-const (
 	// CLIENT is an end user.
 	CLIENT = 0
 	// ROUTER is another router in the cluster.
@@ -93,6 +92,7 @@ func (c *client) readLoop() {
 	for {
 		buf, err := getMessageBuffer(c.nc)
 		if err != nil {
+			log.Error("\tserver/client.go: read buf err: ", err)
 			c.Close()
 			break
 		}
@@ -455,7 +455,9 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 }
 
 func (c *client) writeBuffer(buf []byte) error {
+	c.mu.Lock()
 	_, err := c.nc.Write(buf)
+	c.mu.Unlock()
 	return err
 }
 

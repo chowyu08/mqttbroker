@@ -23,7 +23,7 @@ const (
 	// DEFAULT_ROUTE_CONNECT Route solicitation intervals.
 	DEFAULT_ROUTE_CONNECT = 2 * time.Second
 	// DEFAULT_TLS_TIMEOUT
-	DEFAULT_TLS_TIMEOUT = 10 * time.Second
+	DEFAULT_TLS_TIMEOUT = 5 * time.Second
 )
 
 type Info struct {
@@ -204,7 +204,7 @@ func (s *Server) createClient(conn net.Conn, typ int, info *ClientInfo) *client 
 			// Force handshake
 			c.mu.Unlock()
 			if err := conn.Handshake(); err != nil {
-				log.Error("\tserver/server.go: TLS handshake error: ", err)
+				log.Error("\tserver/server.go: TLS handshake error, ", err)
 				c.Close()
 				return nil
 			}
@@ -222,7 +222,7 @@ func (s *Server) createClient(conn net.Conn, typ int, info *ClientInfo) *client 
 		c.SendConnect()
 		c.SendInfo()
 	}
-	c.startGoRoutine(func() { c.readLoop() })
+	s.startGoRoutine(func() { c.readLoop() })
 
 	c.mu.Unlock()
 	return c

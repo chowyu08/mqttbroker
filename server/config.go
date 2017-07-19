@@ -64,11 +64,11 @@ func NewTLSConfig(tlsInfo TLSInfo) (*tls.Config, error) {
 
 	cert, err := tls.LoadX509KeyPair(tlsInfo.CertFile, tlsInfo.KeyFile)
 	if err != nil {
-		return nil, fmt.Errorf("\tserver/config.go: error parsing X509 certificate/key pair: %v", err)
+		return nil, fmt.Errorf("error parsing X509 certificate/key pair: %v", err)
 	}
 	cert.Leaf, err = x509.ParseCertificate(cert.Certificate[0])
 	if err != nil {
-		return nil, fmt.Errorf("\tserver/config.go: error parsing certificate: %v", err)
+		return nil, fmt.Errorf("error parsing certificate: %v", err)
 	}
 
 	// Create TLSConfig
