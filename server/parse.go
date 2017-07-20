@@ -76,7 +76,7 @@ func getMessageBuffer(c io.Closer) ([]byte, error) {
 		// the message buffer
 		buf []byte
 		// tmp buffer to read a single byte
-		b []byte = make([]byte, 1000)
+		b []byte = make([]byte, 0)
 		// total bytes read
 		l int = 0
 	)

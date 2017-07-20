@@ -100,9 +100,9 @@ func (c *client) readLoop() {
 			log.Error("\tserver/client.go: read buf err: ", err)
 			c.Close()
 			break
-		}
-		c.parse(buf)
+			c.parse(buf)
 
+		}
 	}
 }
 
