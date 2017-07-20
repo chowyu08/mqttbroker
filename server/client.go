@@ -86,10 +86,6 @@ func (c *client) initClient() {
 	c.subs = make(map[string]*subscription)
 }
 
-func (c *client) startGoRoutine(f func()) {
-	go f()
-}
-
 func (c *client) readLoop() {
 	if c.nc == nil {
 		return
@@ -97,6 +93,9 @@ func (c *client) readLoop() {
 	c.nc.SetReadDeadline(time.Now().Add(time.Second * 5))
 	for {
 		buf, err := getMessageBuffer(c.nc)
+		if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+			continue
+		}
 		if err != nil {
 			log.Error("\tserver/client.go: read buf err: ", err)
 			c.Close()
@@ -106,6 +105,7 @@ func (c *client) readLoop() {
 
 	}
 }
+
 func (c *client) Close() {
 	c.mu.Lock()
 	log.Info("client closed with cid: ", c.clientID)

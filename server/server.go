@@ -275,7 +275,9 @@ func (s *Server) ReadLocalBrokerIP() []string {
 }
 
 func (s *Server) startGoRoutine(f func()) {
-	go f()
+	if s.running {
+		go f()
+	}
 }
 
 func (s *Server) removeClient(c *client) {

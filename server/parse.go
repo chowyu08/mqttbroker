@@ -70,12 +70,13 @@ func getMessageBuffer(c io.Closer) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("conn type is nil")
 	}
-	// conn.SetReadDeadline(t)
+	// conn.SetReadDeadline(time.Now().Add(time.Second * 5))
+	// conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
 	var (
 		// the message buffer
 		buf []byte
 		// tmp buffer to read a single byte
-		b []byte = make([]byte, 1)
+		b []byte = make([]byte, 1000)
 		// total bytes read
 		l int = 0
 	)
