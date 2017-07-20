@@ -93,16 +93,15 @@ func (c *client) readLoop() {
 	c.nc.SetReadDeadline(time.Now().Add(time.Second * 5))
 	for {
 		buf, err := getMessageBuffer(c.nc)
-		if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
-			continue
-		}
 		if err != nil {
+			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+				continue
+			}
 			log.Error("\tserver/client.go: read buf err: ", err)
 			c.Close()
 			break
-			c.parse(buf)
-
 		}
+		c.parse(buf)
 	}
 }
 
