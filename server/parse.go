@@ -35,21 +35,21 @@ func (c *client) parse(buf []byte) {
 	msgType := uint8(buf[0] & 0xF0 >> 4)
 	switch msgType {
 	case CONNACK:
-		log.Info("Recv conack message..........")
+		// log.Info("Recv conack message..........")
 		c.ProcessConnAck(buf)
 	case CONNECT:
-		log.Info("Recv connect message..........")
+		// log.Info("Recv connect message..........")
 		c.ProcessConnect(buf)
 	case PUBLISH:
-		log.Info("Recv publish message..........")
+		// log.Info("Recv publish message..........")
 		c.ProcessPublish(buf)
 	case SUBSCRIBE:
-		log.Info("Recv subscribe message.....")
+		// log.Info("Recv subscribe message.....")
 		c.ProcessSubscribe(buf)
 	case SUBACK:
-		log.Info("Recv suback message.....")
+		// log.Info("Recv suback message.....")
 	case UNSUBSCRIBE:
-		log.Info("Recv unsubscribe message.....")
+		// log.Info("Recv unsubscribe message.....")
 		c.ProcessUnSubscribe(buf)
 	case UNSUBACK:
 		// log.Info("Recv unsuback message.....")
