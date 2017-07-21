@@ -298,8 +298,14 @@ func (c *client) ProcessSubscribe(buf []byte) {
 	for i, t := range topics {
 		if _, exist := c.subs[string(t)]; !exist {
 			queue := false
-			if strings.Index(string(t), "$queue/") == 0 {
-				queue = true
+			if strings.HasPrefix(string(t), "$queue/") {
+				if len(t) > 6 {
+					t = t[7:]
+					queue = true
+				} else {
+					retcodes = append(retcodes, message.QosFailure)
+					continue
+				}
 			}
 			sub := &subscription{
 				subject: t,
