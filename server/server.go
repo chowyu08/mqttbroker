@@ -53,6 +53,7 @@ type Server struct {
 	info          *Info
 	running       bool
 	mu            sync.Mutex
+	gmu           sync.Mutex
 	listener      net.Listener
 	routeListener net.Listener
 	clients       map[string]*client
@@ -163,10 +164,11 @@ func (s *Server) AcceptLoop(typ int, tlsRequire bool) {
 				if tmpDelay > ACCEPT_MAX_SLEEP {
 					tmpDelay = ACCEPT_MAX_SLEEP
 				}
-			} else if s.running {
+				continue
+			} else {
 				log.Error("\tserver/server.go: Accept error: %v", err)
+				return
 			}
-			continue
 		}
 		tmpDelay = ACCEPT_MIN_SLEEP
 		s.startGoRoutine(func() {
@@ -218,11 +220,12 @@ func (s *Server) createClient(conn net.Conn, typ int, info *ClientInfo) *client 
 		c.mu.Unlock()
 		return c
 	}
+	s.startGoRoutine(func() { c.readLoop() })
+
 	if c.typ == REMOTE {
 		c.SendConnect()
 		c.SendInfo()
 	}
-	s.startGoRoutine(func() { c.readLoop() })
 
 	// if c.info.tlsRequire {
 	// 	log.Debugf("TLS handshake complete")
@@ -275,9 +278,11 @@ func (s *Server) ReadLocalBrokerIP() []string {
 }
 
 func (s *Server) startGoRoutine(f func()) {
+	s.gmu.Lock()
 	if s.running {
 		go f()
 	}
+	s.gmu.Unlock()
 }
 
 func (s *Server) removeClient(c *client) {

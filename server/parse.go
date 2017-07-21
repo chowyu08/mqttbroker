@@ -6,6 +6,8 @@ import (
 	"io"
 	"net"
 	"time"
+
+	log "github.com/cihub/seelog"
 )
 
 const (
@@ -33,31 +35,31 @@ func (c *client) parse(buf []byte) {
 	msgType := uint8(buf[0] & 0xF0 >> 4)
 	switch msgType {
 	case CONNACK:
-		// log.Info("Recv conack message..........")
+		log.Info("Recv conack message..........")
 		c.ProcessConnAck(buf)
 	case CONNECT:
-		// log.Info("Recv connect message..........")
+		log.Info("Recv connect message..........")
 		c.ProcessConnect(buf)
 	case PUBLISH:
-		// log.Info("Recv publish message..........")
+		log.Info("Recv publish message..........")
 		c.ProcessPublish(buf)
 	case SUBSCRIBE:
-		// log.Info("Recv subscribe message.....")
+		log.Info("Recv subscribe message.....")
 		c.ProcessSubscribe(buf)
 	case SUBACK:
-		// log.Info("Recv suback message.....")
+		log.Info("Recv suback message.....")
 	case UNSUBSCRIBE:
-		// log.Info("Recv unsubscribe message.....")
+		log.Info("Recv unsubscribe message.....")
 		c.ProcessUnSubscribe(buf)
 	case UNSUBACK:
 		// log.Info("Recv unsuback message.....")
 	case PINGREQ:
-		// log.Info("Recv PINGREQ message..........")
+		log.Info("Recv PINGREQ message..........")
 		c.ProcessPing()
 	case PINGRESP:
-		// log.Info("Recv PINGRESP message..........")
+		log.Info("Recv PINGRESP message..........")
 	case DISCONNECT:
-		// log.Info("Recv DISCONNECT message.......")
+		log.Info("Recv DISCONNECT message.......")
 		c.Close()
 	}
 }
@@ -84,7 +86,7 @@ func getMessageBuffer(c io.Closer) ([]byte, error) {
 	for {
 		// If we have read 5 bytes and still not done, then there's a problem.
 		if l > 5 {
-			return nil, fmt.Errorf("server/parse: 4th byte of remaining length has continuation bit set")
+			return nil, fmt.Errorf("4th byte of remaining length has continuation bit set")
 		}
 		n, err := conn.Read(b[0:])
 		if err != nil {
