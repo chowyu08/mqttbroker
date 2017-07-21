@@ -14,10 +14,16 @@ import (
 )
 
 const (
+	outgoing = "out"
+	incoming = "in"
+)
+
+const (
 	startBufSize = 512
 	// special pub topic for cluster info BrokerInfoTopic
 	BrokerInfoTopic = "broker001info/brokerinfo"
 	// DEFAULT_FLUSH_DEADLINE is the write/flush deadlines.
+
 	DEFAULT_FLUSH_DEADLINE = 2 * time.Second
 	// CLIENT is an end user.
 	CLIENT = 0
@@ -36,6 +42,7 @@ type client struct {
 	info     *ClientInfo
 	subs     map[string]*subscription
 	willMsg  *message.PublishMessage
+	packets  map[string][]byte
 }
 
 //clientInfo eg: username and password
@@ -94,7 +101,8 @@ func (c *client) readLoop() {
 	if nc == nil {
 		return
 	}
-	// c.nc.SetReadDeadline(time.Now().Add(time.Second * 5))
+	c.nc.SetReadDeadline(time.Now().Add(time.Second * 5))
+	first := true
 	for {
 		buf, err := getMessageBuffer(nc)
 		if err != nil {
@@ -105,7 +113,13 @@ func (c *client) readLoop() {
 			c.Close()
 			break
 		}
-		c.parse(buf)
+		if first {
+			c.ProcessConnect(buf)
+			first = false
+		} else {
+			c.parse(buf)
+		}
+
 	}
 }
 
@@ -427,27 +441,33 @@ func (c *client) ProcessPublish(msg []byte) {
 		})
 	}
 	//process normal publish message
-	c.ProcessPublishMessage(msg, topic)
-	// switch pubMsg.QoS() {
-	// case message.QosExactlyOnce:
-	// 	resp := message.NewPubrecMessage()
-	// 	resp.SetPacketId(pubMsg.PacketId())
-	// 	err := c.SendMessage(resp)
-	// 	if err != nil {
-	// 		log.Error("\tserver/client.go: send pubrec error, ", err)
-	// 	}
-	// case message.QosAtLeastOnce:
-	// 	resp := message.NewPubackMessage()
-	// 	resp.SetPacketId(pubMsg.PacketId())
+	// c.ProcessPublishMessage(msg, topic)
+	switch pubMsg.QoS() {
+	case message.QosExactlyOnce:
+		c.mu.Lock()
+		key := incoming + string(pubMsg.PacketId())
+		c.packets[key] = msg
+		c.mu.Unlock()
 
-	// 	if err := c.SendMessage(resp); err != nil {
-	// 		log.Error("\tserver/client.go: send puback error, ", err)
-	// 	}
-	// 	c.ProcessPublishMessage(msg, topic)
+		resp := message.NewPubrecMessage()
+		resp.SetPacketId(pubMsg.PacketId())
+		err := c.writeMessage(resp)
+		if err != nil {
+			log.Error("\tserver/client.go: send pubrec error, ", err)
+		}
 
-	// case message.QosAtMostOnce:
-	// 	c.ProcessPublishMessage(msg, topic)
-	// }
+	case message.QosAtLeastOnce:
+		resp := message.NewPubackMessage()
+		resp.SetPacketId(pubMsg.PacketId())
+
+		if err := c.writeMessage(resp); err != nil {
+			log.Error("\tserver/client.go: send puback error, ", err)
+		}
+		c.ProcessPublishMessage(msg, topic)
+
+	case message.QosAtMostOnce:
+		c.ProcessPublishMessage(msg, topic)
+	}
 }
 func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 
@@ -487,6 +507,72 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 		}
 
 	}
+}
+
+func (c *client) ProcessPubREL(msg []byte) {
+	pubrel := message.NewPubrelMessage()
+	_, err := pubrel.Decode(msg)
+	if err != nil {
+		log.Error("\tserver/client.go: Decode Pubrel Message error: ", err)
+		return
+	}
+	c.mu.Lock()
+	var buf []byte
+	exist := false
+	key := incoming + string(pubrel.PacketId())
+	if buf, exist = c.packets[key]; !exist {
+		log.Error("\tserver/client.go: search qos 2 Message error ")
+		return
+	}
+
+	resp := message.NewPubcompMessage()
+	resp.SetPacketId(pubrel.PacketId())
+	c.writeMessage(resp)
+	delete(c.packets, key)
+
+	pubmsg := message.NewPublishMessage()
+	pubmsg.Decode(buf)
+
+	c.ProcessPublishMessage(buf, string(pubmsg.Topic()))
+
+}
+
+func (c *client) ProcessPubREC(msg []byte) {
+	pubRec := message.NewPubrecMessage()
+	_, err := pubRec.Decode(msg)
+	if err != nil {
+		log.Error("\tserver/client.go: Decode Pubrec Message error: ", err)
+		return
+	}
+	c.mu.Lock()
+	c.packets[outgoing+string(pubRec.PacketId())] = msg
+	c.mu.Unlock()
+
+	resp := message.NewPubrelMessage()
+	resp.SetPacketId(pubRec.PacketId())
+	c.writeMessage(resp)
+}
+
+func (c *client) ProcessPubAck(msg []byte) {
+	puback := message.NewPubackMessage()
+	_, err := puback.Decode(msg)
+	if err != nil {
+		log.Error("\tserver/client.go: Decode PubAck Message error: ", err)
+		return
+	}
+	key := outgoing + string(puback.PacketId())
+	delete(c.packets, key)
+}
+
+func (c *client) ProcessPubComp(msg []byte) {
+	pubcomp := message.NewPubcompMessage()
+	_, err := pubcomp.Decode(msg)
+	if err != nil {
+		log.Error("\tserver/client.go: Decode PubAck Message error: ", err)
+		return
+	}
+	key := outgoing + string(pubcomp.PacketId())
+	delete(c.packets, key)
 }
 
 func (c *client) writeBuffer(buf []byte) error {
