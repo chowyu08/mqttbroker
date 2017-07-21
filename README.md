@@ -42,7 +42,7 @@ $ go run main.go
 
 ### Features and Future
 
-* Supports QOS 0  (1 and 2 Future) 
+* Supports QOS 0 1 and 2 
 
 * TLS Support
 

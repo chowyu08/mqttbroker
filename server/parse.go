@@ -43,16 +43,16 @@ func (c *client) parse(buf []byte) {
 	case PUBLISH:
 		// log.Info("Recv publish message..........")
 		c.ProcessPublish(buf)
-
 	case PUBACK:
-		log.Info("Recv publish  ack message..........")
-		// C.ProcessAck()
+		// log.Info("Recv publish  ack message..........")
+		c.ProcessPubAck(buf)
 	case PUBCOMP:
+		c.ProcessPubComp(buf)
 	case PUBREC:
-		log.Info("Recv publish rec message..........")
+		// log.Info("Recv publish rec message..........")
 		c.ProcessPubREC(buf)
 	case PUBREL:
-		log.Info("Recv publish rel message..........")
+		// log.Info("Recv publish rel message..........")
 		c.ProcessPubREL(buf)
 	case SUBSCRIBE:
 		// log.Info("Recv subscribe message.....")
