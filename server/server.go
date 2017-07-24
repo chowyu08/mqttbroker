@@ -101,9 +101,20 @@ func (s *Server) Start() {
 			s.AcceptLoop(CLIENT, true)
 		})
 	}
-	<-make(chan bool)
+	s.StaticInfo()
 
 }
+
+func (s *Server) StaticInfo() {
+	timeTicker := time.NewTicker(time.Second * 2)
+	for {
+		select {
+		case <-timeTicker.C:
+			log.Info("client Num: ", len(s.clients))
+		}
+	}
+}
+
 func (s *Server) ConnectToRouters() {
 	for i := 0; i < len(s.info.Cluster.Routers); i++ {
 		url := s.info.Cluster.Routers[i]
