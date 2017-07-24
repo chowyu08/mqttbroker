@@ -6,8 +6,6 @@ import (
 	"io"
 	"net"
 	"time"
-
-	log "github.com/cihub/seelog"
 )
 
 const (
@@ -65,12 +63,12 @@ func (c *client) parse(buf []byte) {
 	case UNSUBACK:
 		// log.Info("Recv unsuback message.....")
 	case PINGREQ:
-		log.Info("Recv PINGREQ message..........")
+		// log.Info("Recv PINGREQ message..........")
 		c.ProcessPing()
 	case PINGRESP:
-		log.Info("Recv PINGRESP message..........")
+		// log.Info("Recv PINGRESP message..........")
 	case DISCONNECT:
-		log.Info("Recv DISCONNECT message.......")
+		// log.Info("Recv DISCONNECT message.......")
 		c.Close()
 	}
 }

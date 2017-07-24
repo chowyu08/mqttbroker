@@ -42,6 +42,7 @@ type client struct {
 	subs     map[string]*subscription
 	willMsg  *message.PublishMessage
 	packets  map[string][]byte
+	closeCh  chan bool
 }
 
 //clientInfo eg: username and password
@@ -90,6 +91,7 @@ func (c *client) SendConnect() {
 
 func (c *client) initClient() {
 	c.subs = make(map[string]*subscription)
+	c.closeCh = make(chan bool, 1)
 }
 
 func (c *client) readLoop() {
@@ -103,29 +105,38 @@ func (c *client) readLoop() {
 	c.nc.SetReadDeadline(time.Now().Add(time.Second * 5))
 	first := true
 	for {
-		buf, err := getMessageBuffer(nc)
-		if err != nil {
-			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
-				continue
-			}
-			log.Error("\tserver/client.go: read buf err: ", err)
-			c.Close()
-			break
-		}
-		if first {
-			c.ProcessConnect(buf)
-			first = false
-		} else {
-			c.parse(buf)
-		}
-		if nc == nil {
+		select {
+		case <-c.closeCh:
 			return
-		}
+		default:
+			buf, err := getMessageBuffer(nc)
+			if err != nil {
+				if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+					continue
+				}
+				log.Error("\tserver/client.go: read buf err: ", err)
+				c.Close()
+				break
+			}
+			if first {
+				c.ProcessConnect(buf)
+				first = false
+			} else {
+				c.parse(buf)
+			}
+			if nc == nil {
+				return
+			}
 
+		}
 	}
 }
 
 func (c *client) Close() {
+	if c == nil {
+		return
+	}
+	c.closeCh <- true
 	c.mu.Lock()
 	srv := c.srv
 	willMsg := c.willMsg
