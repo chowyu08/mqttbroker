@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -54,10 +53,10 @@ type ClientInfo struct {
 	remoteurl  string
 }
 type subscription struct {
-	client  *client
-	subject []byte
-	qos     byte
-	queue   bool
+	client *client
+	topic  []byte
+	qos    byte
+	queue  bool
 }
 
 func (c *client) SendInfo() {
@@ -119,6 +118,9 @@ func (c *client) readLoop() {
 		} else {
 			c.parse(buf)
 		}
+		if nc == nil {
+			return
+		}
 
 	}
 }
@@ -160,13 +162,16 @@ func (c *client) Close() {
 			})
 
 		}
-		if len(r.qsubs) > 0 {
-			rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-			idx := rnd.Intn(len(r.qsubs))
-			qsub := r.qsubs[idx]
-			err := qsub.client.writeMessage(willMsg)
-			if err != nil {
-				log.Error("\tserver/client.go: process will message for qsub error, ", err)
+		for i, sub := range r.qsubs {
+			if cnt, exist := srv.queues[string(sub.topic)]; exist && i == cnt {
+				if sub != nil {
+					err := sub.client.writeMessage(willMsg)
+					if err != nil {
+						log.Error("\tserver/client.go: process will message for qsub error,  ", err)
+					}
+				}
+				srv.queues[topic] = (srv.queues[topic] + 1) % len(r.qsubs)
+				break
 			}
 		}
 
@@ -302,16 +307,19 @@ func (c *client) ProcessSubscribe(buf []byte) {
 				if len(t) > 6 {
 					t = t[7:]
 					queue = true
+					if _, exists := srv.queues[string(t)]; !exists {
+						srv.queues[string(t)] = 0
+					}
 				} else {
 					retcodes = append(retcodes, message.QosFailure)
 					continue
 				}
 			}
 			sub := &subscription{
-				subject: t,
-				qos:     qos[i],
-				client:  c,
-				queue:   queue,
+				topic:  t,
+				qos:    qos[i],
+				client: c,
+				queue:  queue,
 			}
 			c.subs[string(t)] = sub
 			err := srv.sl.Insert(sub)
@@ -395,7 +403,7 @@ func (c *client) ProcessUnSubscribe(msg []byte) {
 func (c *client) unsubscribe(sub *subscription) {
 
 	c.mu.Lock()
-	delete(c.subs, string(sub.subject))
+	delete(c.subs, string(sub.topic))
 	c.mu.Unlock()
 
 	if c.srv != nil {
@@ -495,23 +503,27 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 		}
 
 		s.startGoRoutine(func() {
-			err := sub.client.writeBuffer(buf)
-			if err != nil {
-				log.Error("\tserver/client.go: process message for psub error,  ", err)
+			if sub != nil {
+				err := sub.client.writeBuffer(buf)
+				if err != nil {
+					log.Error("\tserver/client.go: process message for psub error,  ", err)
+				}
 			}
 		})
 
 	}
-	if len(r.qsubs) > 0 {
-		rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-		idx := rnd.Intn(len(r.qsubs))
-		qsub := r.qsubs[idx]
 
-		err := qsub.client.writeBuffer(buf)
-		if err != nil {
-			log.Error("\tserver/client.go: process message for qsub error, ", err)
+	for i, sub := range r.qsubs {
+		if cnt, exist := s.queues[string(sub.topic)]; exist && i == cnt {
+			if sub != nil {
+				err := sub.client.writeBuffer(buf)
+				if err != nil {
+					log.Error("\tserver/client.go: process will message for qsub error,  ", err)
+				}
+			}
+			s.queues[topic] = (s.queues[topic] + 1) % len(r.qsubs)
+			break
 		}
-
 	}
 }
 

@@ -59,6 +59,7 @@ type Server struct {
 	clients       map[string]*client
 	routers       map[string]*client
 	remotes       map[string]*client
+	queues        map[string]int
 	sl            *Sublist
 	rl            *RetainList
 }
@@ -70,6 +71,7 @@ func New(info *Info) *Server {
 		clients: make(map[string]*client),
 		routers: make(map[string]*client),
 		remotes: make(map[string]*client),
+		queues:  make(map[string]int),
 		sl:      NewSublist(),
 		rl:      NewRetainList(),
 	}
@@ -346,8 +348,11 @@ func (s *Server) BroadcastUnSubscribeMessage(buf []byte) {
 
 func (s *Server) BroadcastUnSubscribe(sub *subscription) {
 
-	topic := sub.subject
-
+	var topic []byte
+	if sub.queue {
+		front := []byte("$queue/")
+		topic = append(front, sub.topic...)
+	}
 	ubsub := message.NewUnsubscribeMessage()
 	ubsub.AddTopic(topic)
 
@@ -370,7 +375,12 @@ func (s *Server) SendLocalSubsToRouter(c *client) {
 		}
 		client.mu.Unlock()
 		for _, sub := range subs {
-			subMsg.AddTopic(sub.subject, sub.qos)
+			var topic []byte
+			if sub.queue {
+				front := []byte("$queue/")
+				topic = append(front, sub.topic...)
+			}
+			subMsg.AddTopic(topic, sub.qos)
 		}
 	}
 	s.mu.Unlock()

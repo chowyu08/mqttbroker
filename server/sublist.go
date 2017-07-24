@@ -64,7 +64,7 @@ func NewSublist() *Sublist {
 // Insert adds a subscription into the sublist
 func (s *Sublist) Insert(sub *subscription) error {
 
-	tokens, err := SubscribeTopicCheckAndSpilt(sub.subject)
+	tokens, err := SubscribeTopicCheckAndSpilt(sub.topic)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func (s *Sublist) Insert(sub *subscription) error {
 }
 
 func (s *Sublist) Remove(sub *subscription) error {
-	tokens, err := SubscribeTopicCheckAndSpilt(sub.subject)
+	tokens, err := SubscribeTopicCheckAndSpilt(sub.topic)
 	if err != nil {
 		return err
 	}
