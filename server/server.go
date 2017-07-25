@@ -102,6 +102,7 @@ func (s *Server) Start() {
 		})
 	}
 	s.StaticInfo()
+	// <-make(chan bool)
 
 }
 
@@ -110,7 +111,9 @@ func (s *Server) StaticInfo() {
 	for {
 		select {
 		case <-timeTicker.C:
+			s.mu.Lock()
 			log.Info("client Num: ", len(s.clients))
+			s.mu.Unlock()
 		}
 	}
 }
@@ -220,7 +223,6 @@ func (s *Server) createClient(conn net.Conn, typ int, info *ClientInfo) *client 
 			c.mu.Unlock()
 			if err := conn.Handshake(); err != nil {
 				log.Error("\tserver/server.go: TLS handshake error, ", err)
-				c.Close()
 				return nil
 			}
 			conn.SetReadDeadline(time.Time{})
@@ -252,9 +254,7 @@ func (s *Server) createClient(conn net.Conn, typ int, info *ClientInfo) *client 
 }
 
 func tlsTimeout(c *client, conn *tls.Conn) {
-	c.mu.Lock()
 	nc := c.nc
-	c.mu.Unlock()
 	// Check if already closed
 	if nc == nil {
 		return

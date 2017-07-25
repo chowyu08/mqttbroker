@@ -6,6 +6,8 @@ import (
 	"io"
 	"net"
 	"time"
+
+	"github.com/smallnest/rpcx/log"
 )
 
 const (
@@ -70,6 +72,8 @@ func (c *client) parse(buf []byte) {
 	case DISCONNECT:
 		// log.Info("Recv DISCONNECT message.......")
 		c.Close()
+	default:
+		log.Info("Recv Unknow message.......")
 	}
 }
 

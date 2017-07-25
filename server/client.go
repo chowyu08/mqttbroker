@@ -91,7 +91,6 @@ func (c *client) SendConnect() {
 
 func (c *client) initClient() {
 	c.subs = make(map[string]*subscription)
-	c.closeCh = make(chan bool, 1)
 }
 
 func (c *client) readLoop() {
@@ -102,45 +101,42 @@ func (c *client) readLoop() {
 	if nc == nil {
 		return
 	}
-	c.nc.SetReadDeadline(time.Now().Add(time.Second * 5))
+	c.nc.SetReadDeadline(time.Now().Add(time.Second * 10))
 	first := true
 	for {
-		select {
-		case <-c.closeCh:
+		buf, err := getMessageBuffer(nc)
+		if err != nil {
+			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+				continue
+			}
+			log.Error("\tserver/client.go: read buf err: ", err)
+			c.Close()
 			return
-		default:
-			buf, err := getMessageBuffer(nc)
-			if err != nil {
-				if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
-					continue
-				}
-				log.Error("\tserver/client.go: read buf err: ", err)
-				c.Close()
-				break
-			}
-			if first {
-				c.ProcessConnect(buf)
-				first = false
-			} else {
-				c.parse(buf)
-			}
-			if nc == nil {
-				return
-			}
-
+		}
+		if first {
+			c.ProcessConnect(buf)
+			first = false
+		} else {
+			c.parse(buf)
 		}
 	}
 }
 
 func (c *client) Close() {
-	if c == nil {
+	c.mu.Lock()
+	if c == nil || c.nc == nil {
+		log.Info("come here")
+		c.mu.Unlock()
 		return
 	}
-	c.closeCh <- true
-	c.mu.Lock()
 	srv := c.srv
 	willMsg := c.willMsg
 	c.mu.Unlock()
+
+	if c.nc != nil {
+		c.nc.Close()
+	}
+	c.nc = nil
 
 	log.Info("client closed with cid: ", c.clientID)
 	if srv != nil {
@@ -187,11 +183,6 @@ func (c *client) Close() {
 		}
 
 	}
-
-	if c.nc != nil {
-		c.nc.Close()
-	}
-	c = nil
 }
 
 func (c *client) ProcessConnAck(buf []byte) {
@@ -243,6 +234,7 @@ func (c *client) ProcessConnect(msg []byte) {
 
 	c.mu.Lock()
 	srv := c.srv
+	typ := c.typ
 	c.mu.Unlock()
 
 	connack := message.NewConnackMessage()
@@ -269,15 +261,15 @@ func (c *client) ProcessConnect(msg []byte) {
 	}
 
 	srv.mu.Lock()
-	if c.typ == CLIENT {
+	if typ == CLIENT {
 		srv.clients[c.clientID] = c
-	}
-	if c.typ == ROUTER {
+	} else if typ == ROUTER {
 		srv.routers[c.clientID] = c
 	}
 	srv.mu.Unlock()
 
 	connack.SetReturnCode(message.ConnectionAccepted)
+
 connback:
 	err1 := c.writeMessage(connack)
 	if err1 != nil {
@@ -311,6 +303,7 @@ func (c *client) ProcessSubscribe(buf []byte) {
 	c.mu.Lock()
 	srv := c.srv
 	c.mu.Unlock()
+
 	for i, t := range topics {
 		if _, exist := c.subs[string(t)]; !exist {
 			queue := false
@@ -414,8 +407,8 @@ func (c *client) ProcessUnSubscribe(msg []byte) {
 func (c *client) unsubscribe(sub *subscription) {
 
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	delete(c.subs, string(sub.topic))
-	c.mu.Unlock()
 
 	if c.srv != nil {
 		c.srv.sl.Remove(sub)
@@ -558,6 +551,7 @@ func (c *client) ProcessPubREL(msg []byte) {
 	resp.SetPacketId(pubrel.PacketId())
 	c.writeMessage(resp)
 	delete(c.packets, key)
+	c.mu.Unlock()
 
 	pubmsg := message.NewPublishMessage()
 	pubmsg.Decode(buf)
@@ -590,7 +584,10 @@ func (c *client) ProcessPubAck(msg []byte) {
 		return
 	}
 	key := outgoing + string(puback.PacketId())
+
+	c.mu.Lock()
 	delete(c.packets, key)
+	c.mu.Unlock()
 }
 
 func (c *client) ProcessPubComp(msg []byte) {
@@ -601,7 +598,10 @@ func (c *client) ProcessPubComp(msg []byte) {
 		return
 	}
 	key := outgoing + string(pubcomp.PacketId())
+
+	c.mu.Lock()
 	delete(c.packets, key)
+	c.mu.Unlock()
 }
 
 func (c *client) writeBuffer(buf []byte) error {
