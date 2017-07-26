@@ -47,6 +47,7 @@ func (c *client) parse(buf []byte) {
 		// log.Info("Recv publish  ack message..........")
 		c.ProcessPubAck(buf)
 	case PUBCOMP:
+		// log.Info("Recv publish  ack message..........")
 		c.ProcessPubComp(buf)
 	case PUBREC:
 		// log.Info("Recv publish rec message..........")
@@ -118,6 +119,7 @@ func getMessageBuffer(c io.Closer) ([]byte, error) {
 	buf = append(buf, make([]byte, remlen)...)
 
 	for l < len(buf) {
+		// conn.SetReadDeadline(time.Now().Add(time.Second * 5))
 		n, err := conn.Read(buf[l:])
 		if err != nil {
 			return nil, err

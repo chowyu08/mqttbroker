@@ -49,6 +49,7 @@ type client struct {
 type ClientInfo struct {
 	username   string
 	password   string
+	keeplive   uint16
 	tlsRequire bool
 	remoteID   string
 	remoteurl  string
@@ -91,41 +92,61 @@ func (c *client) SendConnect() {
 
 func (c *client) initClient() {
 	c.subs = make(map[string]*subscription)
+	c.packets = make(map[string][]byte)
 }
 
 func (c *client) readLoop() {
 	c.mu.Lock()
 	nc := c.nc
+	keeplive := c.info.keeplive
+	clientID := c.clientID
 	c.mu.Unlock()
 
 	if nc == nil {
 		return
 	}
-	c.nc.SetReadDeadline(time.Now().Add(time.Second * 10))
 	first := true
+	lastIn := uint16(time.Now().Unix())
 	for {
+		nowTime := uint16(time.Now().Unix())
+		if 0 != keeplive && nowTime-lastIn > keeplive*3/2 {
+			log.Error("\tserver/client.go: Client has exceeded timeout, disconnecting. cid:", clientID)
+			c.Close()
+			break
+		}
+
 		buf, err := getMessageBuffer(nc)
 		if err != nil {
 			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+				// log.Error("\tserver/client.go: read timeout")
 				continue
 			}
 			log.Error("\tserver/client.go: read buf err: ", err)
 			c.Close()
-			return
+			break
 		}
+		lastIn = uint16(time.Now().Unix())
 		if first {
 			c.ProcessConnect(buf)
 			first = false
 		} else {
 			c.parse(buf)
 		}
+
+		c.mu.Lock()
+		nc := c.nc
+		c.mu.Unlock()
+
+		if nc == nil {
+			break
+		}
+
 	}
 }
 
 func (c *client) Close() {
 	c.mu.Lock()
 	if c == nil || c.nc == nil {
-		log.Info("come here")
 		c.mu.Unlock()
 		return
 	}
@@ -183,6 +204,7 @@ func (c *client) Close() {
 		}
 
 	}
+	c = nil
 }
 
 func (c *client) ProcessConnAck(buf []byte) {
@@ -238,7 +260,7 @@ func (c *client) ProcessConnect(msg []byte) {
 	c.mu.Unlock()
 
 	connack := message.NewConnackMessage()
-
+	var keeplive uint16
 	if version := connMsg.Version(); version != 0x04 && version != 0x03 {
 		connack.SetReturnCode(message.ErrInvalidProtocolVersion)
 		goto connback
@@ -246,6 +268,14 @@ func (c *client) ProcessConnect(msg []byte) {
 
 	c.info.username = string(connMsg.Username())
 	c.info.password = string(connMsg.Password())
+
+	keeplive = connMsg.KeepAlive()
+	if keeplive < 10 {
+		c.info.keeplive = 60
+	} else {
+		c.info.keeplive = keeplive
+	}
+
 	c.clientID = string(connMsg.ClientId())
 
 	if connMsg.WillFlag() {

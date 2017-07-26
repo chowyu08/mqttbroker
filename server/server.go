@@ -107,13 +107,11 @@ func (s *Server) Start() {
 }
 
 func (s *Server) StaticInfo() {
-	timeTicker := time.NewTicker(time.Second * 2)
+	timeTicker := time.NewTicker(time.Second * 5)
 	for {
 		select {
 		case <-timeTicker.C:
-			s.mu.Lock()
 			log.Info("client Num: ", len(s.clients))
-			s.mu.Unlock()
 		}
 	}
 }
