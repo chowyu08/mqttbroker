@@ -101,7 +101,7 @@ func (s *Server) Start() {
 			s.AcceptLoop(CLIENT, true)
 		})
 	}
-	s.StaticInfo()
+	go s.StaticInfo()
 	// <-make(chan bool)
 
 }

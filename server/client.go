@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -115,7 +116,7 @@ func (c *client) readLoop() {
 			break
 		}
 
-		buf, err := getMessageBuffer(nc)
+		buf, err := c.ReadPacket()
 		if err != nil {
 			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
 				// log.Error("\tserver/client.go: read timeout")
@@ -548,6 +549,11 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 	}
 
 	for i, sub := range r.qsubs {
+		if sub.client.typ == ROUTER {
+			if c.typ == ROUTER {
+				continue
+			}
+		}
 		if cnt, exist := s.queues[string(sub.topic)]; exist && i == cnt {
 			if sub != nil {
 				err := sub.client.writeBuffer(buf)
@@ -636,9 +642,14 @@ func (c *client) ProcessPubComp(msg []byte) {
 
 func (c *client) writeBuffer(buf []byte) error {
 	c.mu.Lock()
-	// c.nc.SetWriteDeadline(time.Now().Add(DEFAULT_WRITE_TIMEOUT))
-	_, err := c.nc.Write(buf)
-	// c.nc.SetWriteDeadline(time.Time{})
+	nc := c.nc
+	if nc == nil {
+		c.mu.Unlock()
+		return errors.New("conn is nul")
+	}
+	// nc.SetWriteDeadline(time.Now().Add(DEFAULT_WRITE_TIMEOUT))
+	_, err := nc.Write(buf)
+	// nc.SetWriteDeadline(time.Time{})
 	c.mu.Unlock()
 	return err
 }

@@ -78,6 +78,58 @@ func (c *client) parse(buf []byte) {
 	}
 }
 
+func (c *client) Read(b []byte) (int, error) {
+	if c.nc == nil {
+		return 0, fmt.Errorf("conn is nil")
+	}
+	if err := c.nc.SetReadDeadline(time.Now().Add(DEFAULT_READ_TIMEOUT)); err != nil {
+		return 0, err
+	}
+	return c.nc.Read(b)
+}
+
+func (c *client) ReadPacket() ([]byte, error) {
+	var (
+		// the message buffer
+		buf []byte
+		// tmp buffer to read a single byte
+		b []byte = make([]byte, 1)
+		// total bytes read
+		l int = 0
+	)
+	// Let's read enough bytes to get the message header (msg type, remaining length)
+	for {
+		// If we have read 5 bytes and still not done, then there's a problem.
+		if l > 5 {
+			return nil, fmt.Errorf("4th byte of remaining length has continuation bit set")
+		}
+		n, err := c.Read(b[0:])
+		if err != nil {
+			return nil, err
+		}
+		buf = append(buf, b...)
+		l += n
+		// Check the remlen byte (1+) to see if the continuation bit is set. If so,
+		// increment cnt and continue reading. Otherwise break.
+		if l > 1 && b[0] < 0x80 {
+			break
+		}
+	}
+	// Get the remaining length of the message
+	remlen, _ := binary.Uvarint(buf[1:])
+	buf = append(buf, make([]byte, remlen)...)
+
+	for l < len(buf) {
+		n, err := c.Read(buf[l:])
+		if err != nil {
+			return nil, err
+		}
+		l += n
+	}
+
+	return buf, nil
+}
+
 func getMessageBuffer(c io.Closer) ([]byte, error) {
 	if c == nil {
 		return nil, fmt.Errorf("conn is nil")
