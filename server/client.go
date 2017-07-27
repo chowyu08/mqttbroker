@@ -187,6 +187,7 @@ func (c *client) Close() {
 			})
 
 		}
+		srv.mu.Lock()
 		for i, sub := range r.qsubs {
 			if cnt, exist := srv.queues[string(sub.topic)]; exist && i == cnt {
 				if sub != nil {
@@ -199,6 +200,7 @@ func (c *client) Close() {
 				break
 			}
 		}
+		srv.mu.Unlock()
 
 	}
 	c = nil
@@ -345,9 +347,11 @@ func (c *client) ProcessSubscribe(buf []byte) {
 				if len(t) > 6 {
 					t = t[7:]
 					queue = true
+					srv.mu.Lock()
 					if _, exists := srv.queues[string(t)]; !exists {
 						srv.queues[string(t)] = 0
 					}
+					srv.mu.Unlock()
 				} else {
 					retcodes = append(retcodes, message.QosFailure)
 					continue
