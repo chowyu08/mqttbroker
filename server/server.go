@@ -297,10 +297,8 @@ func (s *Server) startGoRoutine(f func()) {
 }
 
 func (s *Server) removeClient(c *client) {
-	c.mu.Lock()
 	cid := c.clientID
 	typ := c.typ
-	c.mu.Unlock()
 
 	s.mu.Lock()
 	switch typ {
@@ -371,11 +369,11 @@ func (s *Server) BroadcastUnSubscribe(sub *subscription) {
 }
 
 func (s *Server) SendLocalSubsToRouter(c *client) {
+	s.mu.Lock()
 	if len(s.clients) < 1 {
 		return
 	}
 	subMsg := message.NewSubscribeMessage()
-	s.mu.Lock()
 	for _, client := range s.clients {
 		client.mu.Lock()
 		subs := make([]*subscription, 0, len(client.subs))

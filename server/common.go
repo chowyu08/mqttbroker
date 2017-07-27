@@ -43,15 +43,14 @@ func PublishTopicCheckAndSpilt(subject []byte) ([]string, error) {
 	topic := string(subject)
 	re := strings.Split(topic, "/")
 	for i, v := range re {
-		if i != 0 && i != (len(re)-1) {
-			if v == "" {
+		if v == "" {
+			if i != 0 && i != (len(re)-1) {
 				return nil, errors.New("Topic format error with index of //")
-			}
-		} else {
-			if v == "" {
+			} else {
 				re[i] = "/"
 			}
 		}
+
 	}
 	return re, nil
 }

@@ -97,11 +97,8 @@ func (c *client) initClient() {
 }
 
 func (c *client) readLoop() {
-	c.mu.Lock()
 	nc := c.nc
 	keeplive := c.info.keeplive
-	clientID := c.clientID
-	c.mu.Unlock()
 
 	if nc == nil {
 		return
@@ -111,7 +108,7 @@ func (c *client) readLoop() {
 	for {
 		nowTime := uint16(time.Now().Unix())
 		if 0 != keeplive && nowTime-lastIn > keeplive*3/2 {
-			log.Error("\tserver/client.go: Client has exceeded timeout, disconnecting. cid:", clientID)
+			log.Error("\tserver/client.go: Client has exceeded timeout, disconnecting. cid:", c.clientID)
 			c.Close()
 			break
 		}
@@ -141,13 +138,13 @@ func (c *client) readLoop() {
 		if nc == nil {
 			break
 		}
-
 	}
 }
 
 func (c *client) Close() {
 	c.mu.Lock()
-	if c == nil || c.nc == nil {
+	nc := c.nc
+	if nc == nil {
 		c.mu.Unlock()
 		return
 	}
@@ -155,12 +152,11 @@ func (c *client) Close() {
 	willMsg := c.willMsg
 	c.mu.Unlock()
 
-	if c.nc != nil {
-		c.nc.Close()
+	if nc != nil {
+		nc.Close()
+		nc = nil
 	}
-	c.nc = nil
-
-	log.Info("client closed with cid: ", c.clientID)
+	// log.Info("client closed with cid: ", clientID)
 	if srv != nil {
 		srv.removeClient(c)
 		for _, sub := range c.subs {
@@ -209,11 +205,18 @@ func (c *client) Close() {
 }
 
 func (c *client) ProcessConnAck(buf []byte) {
+
+	s := c.srv
+	typ := c.typ
+	if s == nil {
+		return
+	}
+
 	ackMsg := message.NewConnackMessage()
 	_, err := ackMsg.Decode(buf)
 	if err != nil {
 		log.Error("\tserver/client.go: Decode Connack Message error: ", err)
-		if c.typ == CLIENT {
+		if typ == CLIENT {
 			c.Close()
 		}
 		return
@@ -221,18 +224,13 @@ func (c *client) ProcessConnAck(buf []byte) {
 	rc := ackMsg.ReturnCode()
 	if rc != message.ConnectionAccepted {
 		log.Error("\tserver/client.go: Connect error with the returnCode is: ", rc)
-		if c.typ == CLIENT {
+		if typ == CLIENT {
 			c.Close()
 		}
 		return
 	}
 	//save remote info and send local subs
-	c.mu.Lock()
-	s := c.srv
-	c.mu.Unlock()
-	if s == nil {
-		return
-	}
+
 	s.mu.Lock()
 	s.remotes[c.clientID] = c
 	s.mu.Unlock()
@@ -243,22 +241,25 @@ func (c *client) ProcessConnAck(buf []byte) {
 }
 
 func (c *client) ProcessConnect(msg []byte) {
+
+	srv := c.srv
+	typ := c.typ
+
+	if srv == nil {
+		return
+	}
+
 	connMsg := message.NewConnectMessage()
 	_, err := connMsg.Decode(msg)
 	if err != nil {
 		if !message.ValidConnackError(err) {
 			log.Error("\tserver/client.go: Decode Connection Message error: ", err)
-			if c.typ == CLIENT {
+			if typ == CLIENT {
 				c.Close()
 			}
 			return
 		}
 	}
-
-	c.mu.Lock()
-	srv := c.srv
-	typ := c.typ
-	c.mu.Unlock()
 
 	connack := message.NewConnackMessage()
 	var keeplive uint16
@@ -310,6 +311,12 @@ connback:
 
 func (c *client) ProcessSubscribe(buf []byte) {
 
+	srv := c.srv
+	typ := c.typ
+	if srv == nil {
+		return
+	}
+
 	var topics [][]byte
 	var qos []byte
 
@@ -321,7 +328,7 @@ func (c *client) ProcessSubscribe(buf []byte) {
 
 	if err != nil {
 		log.Error("\tserver/client.go: Decode Subscribe Message error: ", err)
-		if c.typ == CLIENT {
+		if typ == CLIENT {
 			c.Close()
 		}
 		return
@@ -330,10 +337,6 @@ func (c *client) ProcessSubscribe(buf []byte) {
 	qos = msg.Qos()
 
 	suback.SetPacketId(msg.PacketId())
-
-	c.mu.Lock()
-	srv := c.srv
-	c.mu.Unlock()
 
 	for i, t := range topics {
 		if _, exist := c.subs[string(t)]; !exist {
@@ -356,7 +359,11 @@ func (c *client) ProcessSubscribe(buf []byte) {
 				client: c,
 				queue:  queue,
 			}
+
+			c.mu.Lock()
 			c.subs[string(t)] = sub
+			c.mu.Unlock()
+
 			err := srv.sl.Insert(sub)
 			if err != nil {
 				log.Error("\tserver/client.go: Insert subscription error: ", err)
@@ -373,12 +380,12 @@ func (c *client) ProcessSubscribe(buf []byte) {
 
 	if err := suback.AddReturnCodes(retcodes); err != nil {
 		log.Error("\tserver/client.go: add return suback code error, ", err)
-		if c.typ == CLIENT {
+		if typ == CLIENT {
 			c.Close()
 		}
 		return
 	}
-	if c.typ == CLIENT {
+	if typ == CLIENT {
 		srv.startGoRoutine(func() {
 			srv.BroadcastSubscribeMessage(buf)
 		})
@@ -402,11 +409,17 @@ func (c *client) ProcessSubscribe(buf []byte) {
 }
 
 func (c *client) ProcessUnSubscribe(msg []byte) {
+	srv := c.srv
+	typ := c.typ
+	if srv == nil {
+		return
+	}
+
 	unsub := message.NewUnsubscribeMessage()
 	_, err := unsub.Decode(msg)
 	if err != nil {
 		log.Error("\tserver/client.go: Decode UnSubscribe Message error: ", err)
-		if c.typ == CLIENT {
+		if typ == CLIENT {
 			c.Close()
 		}
 		return
@@ -422,7 +435,7 @@ func (c *client) ProcessUnSubscribe(msg []byte) {
 		}
 
 	}
-	if c.typ == CLIENT {
+	if typ == CLIENT {
 		c.srv.BroadcastUnSubscribeMessage(msg)
 	}
 
@@ -438,8 +451,8 @@ func (c *client) ProcessUnSubscribe(msg []byte) {
 func (c *client) unsubscribe(sub *subscription) {
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	delete(c.subs, string(sub.topic))
+	c.mu.Unlock()
 
 	if c.srv != nil {
 		c.srv.sl.Remove(sub)
@@ -455,6 +468,12 @@ func (c *client) ProcessPing() {
 }
 
 func (c *client) ProcessPublish(msg []byte) {
+	srv := c.srv
+	typ := c.typ
+	if srv == nil {
+		return
+	}
+
 	pubMsg := message.NewPublishMessage()
 	_, err := pubMsg.Decode(msg)
 	if err != nil {
@@ -466,24 +485,21 @@ func (c *client) ProcessPublish(msg []byte) {
 	}
 	topic := string(pubMsg.Topic())
 
-	c.mu.Lock()
-	s := c.srv
-	c.mu.Unlock()
 	//process info message
-	if c.typ == ROUTER && topic == BrokerInfoTopic {
+	if typ == ROUTER && topic == BrokerInfoTopic {
 		remoteID := gjson.GetBytes(pubMsg.Payload(), "remoteID").String()
 		url := gjson.GetBytes(pubMsg.Payload(), "url").String()
 		if remoteID == "" {
 			log.Error("\tserver/client.go: receive info message error with remoteID is null")
 			return
 		}
-		s.ValidAndProcessRemoteInfo(remoteID, url)
+		srv.ValidAndProcessRemoteInfo(remoteID, url)
 		return
 	}
 
 	if pubMsg.Retain() {
-		s.startGoRoutine(func() {
-			err := s.rl.Insert(pubMsg.Topic(), msg)
+		srv.startGoRoutine(func() {
+			err := srv.rl.Insert(pubMsg.Topic(), msg)
 			if err != nil {
 				log.Error("\tserver/client.go: Insert Retain Message error: ", err)
 			}
@@ -520,9 +536,11 @@ func (c *client) ProcessPublish(msg []byte) {
 }
 func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 
-	c.mu.Lock()
 	s := c.srv
-	c.mu.Unlock()
+	typ := c.typ
+	if s == nil {
+		return
+	}
 
 	r := s.sl.Match(topic)
 	// log.Info("psubs num: ", len(r.psubs))
@@ -532,7 +550,7 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 
 	for _, sub := range r.psubs {
 		if sub.client.typ == ROUTER {
-			if c.typ == ROUTER {
+			if typ == ROUTER {
 				continue
 			}
 		}
@@ -550,10 +568,11 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 
 	for i, sub := range r.qsubs {
 		if sub.client.typ == ROUTER {
-			if c.typ == ROUTER {
+			if typ == ROUTER {
 				continue
 			}
 		}
+		s.mu.Lock()
 		if cnt, exist := s.queues[string(sub.topic)]; exist && i == cnt {
 			if sub != nil {
 				err := sub.client.writeBuffer(buf)
@@ -564,6 +583,7 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 			s.queues[topic] = (s.queues[topic] + 1) % len(r.qsubs)
 			break
 		}
+		s.mu.Unlock()
 	}
 }
 

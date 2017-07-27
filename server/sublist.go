@@ -102,8 +102,65 @@ func (s *Sublist) Insert(sub *subscription) error {
 		}
 		n.psubs = append(n.psubs, sub)
 	}
+
+	topic := string(sub.topic)
+	s.addToCache(topic, sub)
 	s.Unlock()
 	return nil
+}
+
+func (s *Sublist) addToCache(topic string, sub *subscription) {
+	for k, r := range s.cache {
+		if matchLiteral(k, topic) {
+			// Copy since others may have a reference.
+			nr := copyResult(r)
+			if sub.queue == false {
+				nr.psubs = append(nr.psubs, sub)
+			} else {
+				nr.qsubs = append(nr.qsubs, sub)
+			}
+			s.cache[k] = nr
+		}
+	}
+}
+
+func (s *Sublist) removeFromCache(topic string, sub *subscription) {
+	for k := range s.cache {
+		if !matchLiteral(k, topic) {
+			continue
+		}
+		// Since someone else may be referecing, can't modify the list
+		// safely, just let it re-populate.
+		delete(s.cache, k)
+	}
+}
+
+func matchLiteral(literal, topic string) bool {
+	tok, _ := SubscribeTopicCheckAndSpilt([]byte(topic))
+	li, _ := PublishTopicCheckAndSpilt([]byte(literal))
+
+	for i := 0; i < len(tok); i++ {
+		b := tok[i]
+		switch b {
+		case "+":
+
+		case "#":
+			return true
+		default:
+			if b != li[i] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// Deep copy
+func copyResult(r *SublistResult) *SublistResult {
+	nr := &SublistResult{}
+	nr.psubs = append([]*subscription(nil), r.psubs...)
+	nr.qsubs = append([]*subscription(nil), r.qsubs...)
+	return nr
 }
 
 func (s *Sublist) Remove(sub *subscription) error {
@@ -131,6 +188,8 @@ func (s *Sublist) Remove(sub *subscription) error {
 	if !s.removeFromNode(n, sub) {
 		return errors.New("No Matches subscription Found")
 	}
+	topic := string(sub.topic)
+	s.removeFromCache(topic, sub)
 	return nil
 
 }
@@ -151,9 +210,16 @@ func (s *Sublist) removeFromNode(n *node, sub *subscription) (found bool) {
 	return false
 }
 
-func (s *Sublist) Match(subject string) *SublistResult {
+func (s *Sublist) Match(topic string) *SublistResult {
+	s.RLock()
+	rc, ok := s.cache[topic]
+	s.RUnlock()
 
-	tokens, err := SubscribeTopicCheckAndSpilt([]byte(subject))
+	if ok {
+		return rc
+	}
+
+	tokens, err := PublishTopicCheckAndSpilt([]byte(topic))
 	if err != nil {
 		log.Error("\tserver/sublist.go: ", err)
 		return nil
@@ -176,6 +242,13 @@ func (s *Sublist) Match(subject string) *SublistResult {
 			}
 		} else {
 			matchLevel(s.root, tokens, result)
+		}
+	}
+	s.cache[topic] = result
+	if len(s.cache) > 1024 {
+		for k := range s.cache {
+			delete(s.cache, k)
+			break
 		}
 	}
 
