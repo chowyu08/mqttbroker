@@ -69,7 +69,7 @@ $ go run main.go
 
 * Low memory and CPU
 
-over **400,000 MPS** in a 20000:20000 single publisher and single producer configuration
+over **400,000 MPS** in a 20000:20000  publisher and producer configuration
 
 ## License
 * Copyright by Author
