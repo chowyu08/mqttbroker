@@ -2,7 +2,7 @@ MQTT Broker
 ============
 
 ## About
-this repository is a mqtt broker writting in golang, version support 3.1.1, and compatible
+Golang MQTT Broker, Version 3.1.1, and compatible
 for [eclipse paho client](https://github.com/eclipse?utf8=%E2%9C%93&q=mqtt&type=&language=)
 
 ## RUNNING
@@ -59,6 +59,17 @@ $ go run main.go
 * Better authentication modules (Future) 
 
 * Message re-delivery (DUP) (Future)
+
+
+## Performance
+
+* High throughput
+
+* High concurrency
+
+* Low memory and CPU
+
+over **400,000 MPS** in a 20000:20000 single publisher and single producer configuration
 
 ## License
 * Copyright by Author
