@@ -83,12 +83,19 @@ func (s *Server) Start() {
 	s.mu.Unlock()
 	if s.info.Port != "" {
 		s.startGoRoutine(func() {
-			s.AcceptLoop(CLIENT, false)
+			s.AcceptClientsLoop(false)
 		})
 	}
+
+	if s.info.TlsPort != "" {
+		s.startGoRoutine(func() {
+			s.AcceptClientsLoop(true)
+		})
+	}
+
 	if s.info.Cluster.Port != "" {
 		s.startGoRoutine(func() {
-			s.StartRouting()
+			s.AcceptRoutersLoop()
 		})
 	}
 	if len(s.info.Cluster.Routers) > 0 {
@@ -96,18 +103,10 @@ func (s *Server) Start() {
 			s.ConnectToRouters()
 		})
 	}
-	if s.info.TlsPort != "" {
-		s.startGoRoutine(func() {
-			s.AcceptLoop(CLIENT, true)
-		})
-	}
+
 	go s.StaticInfo()
 	// <-make(chan bool)
 
-}
-
-func (s *Server) StartRouting() {
-	s.AcceptLoop(ROUTER, false)
 }
 
 func (s *Server) StaticInfo() {
@@ -139,31 +138,27 @@ func (s *Server) connectRouter(url, remoteID string) {
 				continue
 			}
 		}
-		route := &route{
+		route := &Route{
 			tlsRequired: false,
 			remoteID:    remoteID,
 			remoteurl:   url,
 		}
-		s.createClient(conn, REMOTE, route)
+		s.createRemote(conn, route)
 		return
 	}
 }
 
-func (s *Server) AcceptLoop(typ int, tlsRequire bool) {
+func (s *Server) AcceptClientsLoop(tlsRequire bool) {
 	var hp string
-	if typ == CLIENT {
-		if tlsRequire {
-			hp = s.info.TlsHost + ":" + s.info.TlsPort
-			log.Info("\tListen on tls port: ", hp)
-		} else {
-			hp = s.info.Host + ":" + s.info.Port
-			log.Info("\tListen on client port: ", hp)
-		}
 
-	} else if typ == ROUTER {
-		hp = s.info.Cluster.Host + ":" + s.info.Cluster.Port
-		log.Info("\tListen on cluster port: ", hp)
+	if tlsRequire {
+		hp = s.info.TlsHost + ":" + s.info.TlsPort
+		log.Info("\tListen clients on tls port: ", hp)
+	} else {
+		hp = s.info.Host + ":" + s.info.Port
+		log.Info("\tListen clients on port: ", hp)
 	}
+
 	l, e := net.Listen("tcp", hp)
 	if e != nil {
 		log.Error("\tserver/server.go: Error listening on ", hp, e)
@@ -190,16 +185,13 @@ func (s *Server) AcceptLoop(typ int, tlsRequire bool) {
 		}
 		tmpDelay = ACCEPT_MIN_SLEEP
 		s.startGoRoutine(func() {
-			route := &route{
-				tlsRequired: tlsRequire,
-			}
-			s.createClient(conn, typ, route)
+			s.createClient(conn, tlsRequire)
 		})
 	}
 }
 
-func (s *Server) createClient(conn net.Conn, typ int, route *route) *client {
-	c := &client{srv: s, nc: conn, typ: typ, route: route}
+func (s *Server) createClient(conn net.Conn, tlsRequire bool) *client {
+	c := &client{srv: s, nc: conn, typ: CLIENT, tlsRequired: tlsRequire}
 	c.initClient()
 
 	s.mu.Lock()
@@ -211,25 +203,24 @@ func (s *Server) createClient(conn net.Conn, typ int, route *route) *client {
 
 	// Re-Grab lock
 	c.mu.Lock()
-	if c.typ == CLIENT {
-		if c.tlsRequired {
-			log.Info("\tserver/server.go: statting TLS Client connection handshake")
-			c.nc = tls.Server(c.nc, s.info.TLSConfig)
-			conn := c.nc.(*tls.Conn)
 
-			// Setup the timeout
-			time.AfterFunc(DEFAULT_TLS_TIMEOUT, func() { tlsTimeout(c, conn) })
-			conn.SetReadDeadline(time.Now().Add(DEFAULT_TLS_TIMEOUT))
+	if c.tlsRequired {
+		log.Info("\tserver/server.go: statting TLS Client connection handshake")
+		c.nc = tls.Server(c.nc, s.info.TLSConfig)
+		conn := c.nc.(*tls.Conn)
 
-			// Force handshake
-			c.mu.Unlock()
-			if err := conn.Handshake(); err != nil {
-				log.Error("\tserver/server.go: TLS handshake error, ", err)
-				return nil
-			}
-			conn.SetReadDeadline(time.Time{})
-			c.mu.Lock()
+		// Setup the timeout
+		time.AfterFunc(DEFAULT_TLS_TIMEOUT, func() { TlsTimeout(c, conn) })
+		conn.SetReadDeadline(time.Now().Add(DEFAULT_TLS_TIMEOUT))
+
+		// Force handshake
+		c.mu.Unlock()
+		if err := conn.Handshake(); err != nil {
+			log.Error("\tserver/server.go: TLS handshake error, ", err)
+			return nil
 		}
+		conn.SetReadDeadline(time.Time{})
+		c.mu.Lock()
 	}
 
 	// The connection may have been closed
@@ -237,12 +228,8 @@ func (s *Server) createClient(conn net.Conn, typ int, route *route) *client {
 		c.mu.Unlock()
 		return c
 	}
-	s.startGoRoutine(func() { c.readLoop() })
 
-	if c.typ == REMOTE {
-		c.SendConnect()
-		c.SendInfo()
-	}
+	s.startGoRoutine(func() { c.readLoop() })
 
 	// if c.info.tlsRequire {
 	// 	log.Debugf("TLS handshake complete")
@@ -255,7 +242,7 @@ func (s *Server) createClient(conn net.Conn, typ int, route *route) *client {
 
 }
 
-func tlsTimeout(c *client, conn *tls.Conn) {
+func TlsTimeout(c *client, conn *tls.Conn) {
 	nc := c.nc
 	// Check if already closed
 	if nc == nil {
@@ -328,15 +315,7 @@ func GenUniqueId() string {
 }
 
 func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
-	exist := false
-	for _, v := range s.remotes {
-		if v.route.remoteurl == url {
-			if v.route.remoteID == "" || v.route.remoteID != remoteID {
-				v.route.remoteID = remoteID
-			}
-			exist = true
-		}
-	}
+	_, exist := s.remotes[url]
 	if !exist {
 		s.startGoRoutine(func() {
 			s.connectRouter(url, remoteID)
@@ -344,8 +323,10 @@ func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
 	}
 }
 
-func (s *Server) BroadcastInfoMessage() {
-
+func (s *Server) BroadcastInfoMessage(msg message.Message) {
+	for _, r := range s.remotes {
+		r.writeMessage(msg)
+	}
 }
 
 func (s *Server) BroadcastSubscribeMessage(buf []byte) {

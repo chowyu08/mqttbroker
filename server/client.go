@@ -10,7 +10,6 @@ import (
 
 	log "github.com/cihub/seelog"
 	"github.com/surgemq/message"
-	"github.com/tidwall/gjson"
 )
 
 const (
@@ -46,11 +45,11 @@ type client struct {
 	subs        map[string]*subscription
 	willMsg     *message.PublishMessage
 	packets     map[string][]byte
-	route       *route
+	route       *Route
 	closeCh     chan bool
 }
 
-type route struct {
+type Route struct {
 	remoteID    string
 	remoteurl   string
 	tlsRequired bool
@@ -68,8 +67,7 @@ func (c *client) SendInfo() {
 	infoMsg.SetTopic([]byte(BrokerInfoTopic))
 	localIP := strings.Split(c.nc.LocalAddr().String(), ":")[0]
 	ipaddr := localIP + ":" + c.srv.info.Cluster.Port
-	info := fmt.Sprintf(`{"remoteID":"%s","url":"%s"}`, c.srv.ID, ipaddr)
-	log.Info("remoteInfo: ", info)
+	info := fmt.Sprintf(`{"remoteID":"%s","url":"%s","isForward":false}`, c.srv.ID, ipaddr)
 	infoMsg.SetPayload([]byte(info))
 	infoMsg.SetQoS(0)
 	infoMsg.SetRetain(false)
@@ -233,9 +231,9 @@ func (c *client) ProcessConnAck(buf []byte) {
 		return
 	}
 	//save remote info and send local subs
-
+	addr := c.nc.RemoteAddr().(*net.TCPAddr).String()
 	s.mu.Lock()
-	s.remotes[c.clientID] = c
+	s.remotes[addr] = c
 	s.mu.Unlock()
 
 	s.startGoRoutine(func() {
@@ -298,9 +296,10 @@ func (c *client) ProcessConnect(msg []byte) {
 	srv.mu.Lock()
 	if typ == CLIENT {
 		srv.clients[c.clientID] = c
-	} else if typ == ROUTER {
-		srv.routers[c.clientID] = c
 	}
+	// else if typ == ROUTER {
+	// 	srv.routers[c.clientID] = c
+	// }
 	srv.mu.Unlock()
 
 	connack.SetReturnCode(message.ConnectionAccepted)
@@ -492,13 +491,7 @@ func (c *client) ProcessPublish(msg []byte) {
 
 	//process info message
 	if typ == ROUTER && topic == BrokerInfoTopic {
-		remoteID := gjson.GetBytes(pubMsg.Payload(), "remoteID").String()
-		url := gjson.GetBytes(pubMsg.Payload(), "url").String()
-		if remoteID == "" {
-			log.Error("\tserver/client.go: receive info message error with remoteID is null")
-			return
-		}
-		srv.ValidAndProcessRemoteInfo(remoteID, url)
+		c.ProcessInfo(pubMsg)
 		return
 	}
 

@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/smallnest/rpcx/log"
+	log "github.com/cihub/seelog"
 )
 
 const (

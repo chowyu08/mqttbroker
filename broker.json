@@ -6,7 +6,7 @@
 		"port": "1993",
 		"routers": []
 	},
-	"tlsPort": "8883",
+	"tlsPort": "",
 	"tlsHost": "0.0.0.0",
 	"tlsInfo": {
 		"verify": true,
