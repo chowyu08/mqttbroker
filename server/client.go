@@ -34,27 +34,28 @@ const (
 )
 
 type client struct {
-	typ      int
-	srv      *Server
-	nc       net.Conn
-	mu       sync.Mutex
-	clientID string
-	info     *ClientInfo
-	subs     map[string]*subscription
-	willMsg  *message.PublishMessage
-	packets  map[string][]byte
-	closeCh  chan bool
+	typ         int
+	srv         *Server
+	nc          net.Conn
+	mu          sync.Mutex
+	clientID    string
+	username    string
+	password    string
+	keeplive    uint16
+	tlsRequired bool
+	subs        map[string]*subscription
+	willMsg     *message.PublishMessage
+	packets     map[string][]byte
+	route       *route
+	closeCh     chan bool
 }
 
-//clientInfo eg: username and password
-type ClientInfo struct {
-	username   string
-	password   string
-	keeplive   uint16
-	tlsRequire bool
-	remoteID   string
-	remoteurl  string
+type route struct {
+	remoteID    string
+	remoteurl   string
+	tlsRequired bool
 }
+
 type subscription struct {
 	client *client
 	topic  []byte
@@ -98,7 +99,7 @@ func (c *client) initClient() {
 
 func (c *client) readLoop() {
 	nc := c.nc
-	keeplive := c.info.keeplive
+	keeplive := c.keeplive
 
 	if nc == nil {
 		return
@@ -270,14 +271,14 @@ func (c *client) ProcessConnect(msg []byte) {
 		goto connback
 	}
 
-	c.info.username = string(connMsg.Username())
-	c.info.password = string(connMsg.Password())
+	c.username = string(connMsg.Username())
+	c.password = string(connMsg.Password())
 
 	keeplive = connMsg.KeepAlive()
 	if keeplive < 10 {
-		c.info.keeplive = 60
+		c.keeplive = 60
 	} else {
-		c.info.keeplive = keeplive
+		c.keeplive = keeplive
 	}
 
 	c.clientID = string(connMsg.ClientId())
@@ -344,7 +345,7 @@ func (c *client) ProcessSubscribe(buf []byte) {
 		if _, exist := c.subs[string(t)]; !exist {
 			queue := false
 			if strings.HasPrefix(string(t), "$queue/") {
-				if len(t) > 6 {
+				if len(t) > 7 {
 					t = t[7:]
 					queue = true
 					srv.mu.Lock()

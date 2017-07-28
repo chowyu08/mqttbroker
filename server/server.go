@@ -88,7 +88,7 @@ func (s *Server) Start() {
 	}
 	if s.info.Cluster.Port != "" {
 		s.startGoRoutine(func() {
-			s.AcceptLoop(ROUTER, false)
+			s.StartRouting()
 		})
 	}
 	if len(s.info.Cluster.Routers) > 0 {
@@ -104,6 +104,10 @@ func (s *Server) Start() {
 	go s.StaticInfo()
 	// <-make(chan bool)
 
+}
+
+func (s *Server) StartRouting() {
+	s.AcceptLoop(ROUTER, false)
 }
 
 func (s *Server) StaticInfo() {
@@ -135,12 +139,12 @@ func (s *Server) connectRouter(url, remoteID string) {
 				continue
 			}
 		}
-		info := &ClientInfo{
-			tlsRequire: false,
-			remoteID:   remoteID,
-			remoteurl:  url,
+		route := &route{
+			tlsRequired: false,
+			remoteID:    remoteID,
+			remoteurl:   url,
 		}
-		s.createClient(conn, REMOTE, info)
+		s.createClient(conn, REMOTE, route)
 		return
 	}
 }
@@ -186,16 +190,16 @@ func (s *Server) AcceptLoop(typ int, tlsRequire bool) {
 		}
 		tmpDelay = ACCEPT_MIN_SLEEP
 		s.startGoRoutine(func() {
-			info := &ClientInfo{
-				tlsRequire: tlsRequire,
+			route := &route{
+				tlsRequired: tlsRequire,
 			}
-			s.createClient(conn, typ, info)
+			s.createClient(conn, typ, route)
 		})
 	}
 }
 
-func (s *Server) createClient(conn net.Conn, typ int, info *ClientInfo) *client {
-	c := &client{srv: s, nc: conn, typ: typ, info: info}
+func (s *Server) createClient(conn net.Conn, typ int, route *route) *client {
+	c := &client{srv: s, nc: conn, typ: typ, route: route}
 	c.initClient()
 
 	s.mu.Lock()
@@ -208,7 +212,7 @@ func (s *Server) createClient(conn net.Conn, typ int, info *ClientInfo) *client 
 	// Re-Grab lock
 	c.mu.Lock()
 	if c.typ == CLIENT {
-		if c.info.tlsRequire {
+		if c.tlsRequired {
 			log.Info("\tserver/server.go: statting TLS Client connection handshake")
 			c.nc = tls.Server(c.nc, s.info.TLSConfig)
 			conn := c.nc.(*tls.Conn)
@@ -326,9 +330,9 @@ func GenUniqueId() string {
 func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
 	exist := false
 	for _, v := range s.remotes {
-		if v.info.remoteurl == url {
-			if v.info.remoteID == "" || v.info.remoteID != remoteID {
-				v.info.remoteID = remoteID
+		if v.route.remoteurl == url {
+			if v.route.remoteID == "" || v.route.remoteID != remoteID {
+				v.route.remoteID = remoteID
 			}
 			exist = true
 		}
@@ -339,6 +343,11 @@ func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
 		})
 	}
 }
+
+func (s *Server) BroadcastInfoMessage() {
+
+}
+
 func (s *Server) BroadcastSubscribeMessage(buf []byte) {
 	// log.Info("remotes: ", s.remotes)
 	for _, r := range s.remotes {
