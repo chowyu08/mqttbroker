@@ -81,6 +81,7 @@ func (s *Server) Start() {
 	s.mu.Lock()
 	s.running = true
 	s.mu.Unlock()
+
 	if s.info.Port != "" {
 		s.startGoRoutine(func() {
 			s.AcceptClientsLoop(false)
@@ -114,6 +115,7 @@ func (s *Server) StaticInfo() {
 	for {
 		select {
 		case <-timeTicker.C:
+			// log.Info("client Num: ", len(s.clients), " ,router Num: ", len(s.routers), " ,remote Num: ", len(s.remotes))
 			log.Info("client Num: ", len(s.clients))
 		}
 	}
@@ -133,15 +135,18 @@ func (s *Server) connectRouter(url, remoteID string) {
 		conn, err := net.Dial("tcp", url)
 		if err != nil {
 			log.Error("\tserver/server.go: Error trying to connect to route: ", err)
-			select {
-			case <-time.After(DEFAULT_ROUTE_CONNECT):
-				continue
+			for {
+				select {
+				case <-time.After(DEFAULT_ROUTE_CONNECT):
+					log.Debug("\tserver/server.go:Connect to route timeout ,retry...")
+					continue
+				}
 			}
 		}
 		route := &Route{
 			tlsRequired: false,
 			remoteID:    remoteID,
-			remoteurl:   url,
+			remoteUrl:   url,
 		}
 		s.createRemote(conn, route)
 		return
@@ -177,11 +182,10 @@ func (s *Server) AcceptClientsLoop(tlsRequire bool) {
 				if tmpDelay > ACCEPT_MAX_SLEEP {
 					tmpDelay = ACCEPT_MAX_SLEEP
 				}
-				continue
 			} else {
 				log.Error("\tserver/server.go: Accept error: %v", err)
-				return
 			}
+			continue
 		}
 		tmpDelay = ACCEPT_MIN_SLEEP
 		s.startGoRoutine(func() {
@@ -240,6 +244,78 @@ func (s *Server) createClient(conn net.Conn, tlsRequire bool) *client {
 	c.mu.Unlock()
 	return c
 
+}
+
+func (s *Server) AcceptRoutersLoop() {
+	var hp string
+	hp = s.info.Cluster.Host + ":" + s.info.Cluster.Port
+	log.Info("\tListen on route port: ", hp)
+
+	l, e := net.Listen("tcp", hp)
+	if e != nil {
+		log.Error("\tserver/router.go: Error listening on ", hp, e)
+		return
+	}
+
+	tmpDelay := 10 * ACCEPT_MIN_SLEEP
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Temporary() {
+				log.Error("\tserver/router.go: Temporary Client Accept Error(%v), sleeping %dms",
+					ne, tmpDelay/time.Millisecond)
+				time.Sleep(tmpDelay)
+				tmpDelay *= 2
+				if tmpDelay > ACCEPT_MAX_SLEEP {
+					tmpDelay = ACCEPT_MAX_SLEEP
+				}
+			} else {
+				log.Error("\tserver/router.go: Accept error: %v", err)
+			}
+			continue
+		}
+		tmpDelay = ACCEPT_MIN_SLEEP
+		s.startGoRoutine(func() {
+			s.createRoute(conn)
+		})
+	}
+}
+
+func (s *Server) createRoute(conn net.Conn) *client {
+	c := &client{srv: s, nc: conn, typ: ROUTER}
+	c.initClient()
+
+	s.mu.Lock()
+	if !s.running {
+		s.mu.Unlock()
+		return c
+	}
+	s.mu.Unlock()
+
+	s.startGoRoutine(func() { c.readLoop() })
+
+	return c
+}
+
+func (s *Server) createRemote(conn net.Conn, route *Route) *client {
+	c := &client{srv: s, nc: conn, typ: REMOTE, route: route}
+
+	log.Info("new remote ", route.remoteUrl)
+	c.initClient()
+
+	s.mu.Lock()
+	if !s.running {
+		s.mu.Unlock()
+		return c
+	}
+	s.mu.Unlock()
+
+	c.SendConnect()
+	c.SendInfo()
+
+	s.startGoRoutine(func() { c.readLoop() })
+
+	return c
 }
 
 func TlsTimeout(c *client, conn *tls.Conn) {
@@ -315,7 +391,16 @@ func GenUniqueId() string {
 }
 
 func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
-	_, exist := s.remotes[url]
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	exist := false
+	for _, r := range s.remotes {
+		if r.route.remoteUrl == url {
+			r.route.remoteID = remoteID
+			exist = true
+			break
+		}
+	}
 	if !exist {
 		s.startGoRoutine(func() {
 			s.connectRouter(url, remoteID)
@@ -323,14 +408,21 @@ func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
 	}
 }
 
-func (s *Server) BroadcastInfoMessage(msg message.Message) {
+func (s *Server) BroadcastInfoMessage(rid string, msg message.Message) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, r := range s.remotes {
+		if r.route.remoteID == rid {
+			continue
+		}
 		r.writeMessage(msg)
 	}
 }
 
 func (s *Server) BroadcastSubscribeMessage(buf []byte) {
-	// log.Info("remotes: ", s.remotes)
+	log.Info("remotes: ", s.remotes)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, r := range s.remotes {
 		r.writeBuffer(buf)
 	}
@@ -338,13 +430,16 @@ func (s *Server) BroadcastSubscribeMessage(buf []byte) {
 
 func (s *Server) BroadcastUnSubscribeMessage(buf []byte) {
 	// log.Info("remotes: ", s.remotes)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, r := range s.remotes {
 		r.writeBuffer(buf)
 	}
 }
 
 func (s *Server) BroadcastUnSubscribe(sub *subscription) {
-
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var topic []byte
 	if sub.queue {
 		front := []byte("$queue/")

@@ -51,7 +51,7 @@ type client struct {
 
 type Route struct {
 	remoteID    string
-	remoteurl   string
+	remoteUrl   string
 	tlsRequired bool
 }
 
@@ -79,6 +79,7 @@ func (c *client) SendInfo() {
 }
 
 func (c *client) SendConnect() {
+	log.Info("send connect")
 	clientID := GenUniqueId()
 	c.clientID = clientID
 	connMsg := message.NewConnectMessage()
@@ -102,12 +103,12 @@ func (c *client) readLoop() {
 	if nc == nil {
 		return
 	}
-	first := true
+	// first := true
 	lastIn := uint16(time.Now().Unix())
 	for {
 		nowTime := uint16(time.Now().Unix())
 		if 0 != keeplive && nowTime-lastIn > keeplive*3/2 {
-			log.Error("\tserver/client.go: Client has exceeded timeout, disconnecting. cid:", c.clientID)
+			log.Error("\tserver/client.go: Client has exceeded timeout, disconnecting.")
 			c.Close()
 			break
 		}
@@ -123,16 +124,10 @@ func (c *client) readLoop() {
 			break
 		}
 		lastIn = uint16(time.Now().Unix())
-		if first {
-			c.ProcessConnect(buf)
-			first = false
-		} else {
-			c.parse(buf)
-		}
 
-		c.mu.Lock()
+		c.parse(buf)
+
 		nc := c.nc
-		c.mu.Unlock()
 
 		if nc == nil {
 			break
@@ -143,19 +138,19 @@ func (c *client) readLoop() {
 func (c *client) Close() {
 	c.mu.Lock()
 	nc := c.nc
-	if nc == nil {
-		c.mu.Unlock()
-		return
-	}
 	srv := c.srv
 	willMsg := c.willMsg
 	c.mu.Unlock()
+
+	if nc == nil {
+		return
+	}
 
 	if nc != nil {
 		nc.Close()
 		nc = nil
 	}
-	// log.Info("client closed with cid: ", clientID)
+	// log.Info("client closed with cid: ", c.clientID)
 	if srv != nil {
 		srv.removeClient(c)
 		for _, sub := range c.subs {
@@ -231,9 +226,8 @@ func (c *client) ProcessConnAck(buf []byte) {
 		return
 	}
 	//save remote info and send local subs
-	addr := c.nc.RemoteAddr().(*net.TCPAddr).String()
 	s.mu.Lock()
-	s.remotes[addr] = c
+	s.remotes[c.clientID] = c
 	s.mu.Unlock()
 
 	s.startGoRoutine(func() {
@@ -296,10 +290,9 @@ func (c *client) ProcessConnect(msg []byte) {
 	srv.mu.Lock()
 	if typ == CLIENT {
 		srv.clients[c.clientID] = c
+	} else if typ == ROUTER {
+		srv.routers[c.clientID] = c
 	}
-	// else if typ == ROUTER {
-	// 	srv.routers[c.clientID] = c
-	// }
 	srv.mu.Unlock()
 
 	connack.SetReturnCode(message.ConnectionAccepted)
@@ -491,7 +484,9 @@ func (c *client) ProcessPublish(msg []byte) {
 
 	//process info message
 	if typ == ROUTER && topic == BrokerInfoTopic {
-		c.ProcessInfo(pubMsg)
+		srv.startGoRoutine(func() {
+			c.ProcessInfo(pubMsg)
+		})
 		return
 	}
 
@@ -532,6 +527,7 @@ func (c *client) ProcessPublish(msg []byte) {
 		c.ProcessPublishMessage(msg, topic)
 	}
 }
+
 func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 
 	s := c.srv

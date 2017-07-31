@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	log "github.com/cihub/seelog"
+	"github.com/smallnest/rpcx/log"
 )
 
 const (
@@ -41,37 +41,37 @@ func (c *client) parse(buf []byte) {
 		// log.Info("Recv connect message..........")
 		c.ProcessConnect(buf)
 	case PUBLISH:
-		// log.Info("Recv publish message..........")
+		//log.Info("Recv publish message..........")
 		c.ProcessPublish(buf)
 	case PUBACK:
-		// log.Info("Recv publish  ack message..........")
+		//log.Info("Recv publish  ack message..........")
 		c.ProcessPubAck(buf)
 	case PUBCOMP:
-		// log.Info("Recv publish  ack message..........")
+		//log.Info("Recv publish  ack message..........")
 		c.ProcessPubComp(buf)
 	case PUBREC:
-		// log.Info("Recv publish rec message..........")
+		//log.Info("Recv publish rec message..........")
 		c.ProcessPubREC(buf)
 	case PUBREL:
-		// log.Info("Recv publish rel message..........")
+		//log.Info("Recv publish rel message..........")
 		c.ProcessPubREL(buf)
 	case SUBSCRIBE:
-		// log.Info("Recv subscribe message.....")
+		//log.Info("Recv subscribe message.....")
 		c.ProcessSubscribe(buf)
 	case SUBACK:
-		// log.Info("Recv suback message.....")
+		//log.Info("Recv suback message.....")
 	case UNSUBSCRIBE:
-		// log.Info("Recv unsubscribe message.....")
+		//log.Info("Recv unsubscribe message.....")
 		c.ProcessUnSubscribe(buf)
 	case UNSUBACK:
-		// log.Info("Recv unsuback message.....")
+		//log.Info("Recv unsuback message.....")
 	case PINGREQ:
-		// log.Info("Recv PINGREQ message..........")
+		//log.Info("Recv PINGREQ message..........")
 		c.ProcessPing()
 	case PINGRESP:
-		// log.Info("Recv PINGRESP message..........")
+		//log.Info("Recv PINGRESP message..........")
 	case DISCONNECT:
-		// log.Info("Recv DISCONNECT message.......")
+		//log.Info("Recv DISCONNECT message.......")
 		c.Close()
 	default:
 		log.Info("Recv Unknow message.......")
