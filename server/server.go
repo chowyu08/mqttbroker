@@ -308,10 +308,12 @@ func (s *Server) createRemote(conn net.Conn, route *Route) *client {
 	}
 	s.mu.Unlock()
 
+	c.mu.Lock()
 	c.SendConnect()
 	c.SendInfo()
 
 	s.startGoRoutine(func() { c.readLoop() })
+	c.mu.Unlock()
 	s.startGoRoutine(func() {
 		c.StartPing()
 	})
@@ -412,9 +414,9 @@ func (s *Server) BroadcastInfoMessage(remoteID string, msg message.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range s.remotes {
-		if r.route.remoteID == remoteID {
-			continue
-		}
+		// if r.route.remoteID == remoteID {
+		// 	continue
+		// }
 		r.writeMessage(msg)
 	}
 }

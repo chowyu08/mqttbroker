@@ -53,6 +53,7 @@ func NewInfo(sid, url string, isforword bool) *message.PublishMessage {
 	infoMsg := message.NewPublishMessage()
 	infoMsg.SetTopic([]byte(BrokerInfoTopic))
 	info := fmt.Sprintf(`{"remoteID":"%s","url":"%s","isForward":%t}`, sid, url, isforword)
+	// log.Info(string(info))
 	infoMsg.SetPayload([]byte(info))
 	infoMsg.SetQoS(0)
 	infoMsg.SetRetain(false)
