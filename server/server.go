@@ -135,12 +135,10 @@ func (s *Server) connectRouter(url, remoteID string) {
 		conn, err := net.Dial("tcp", url)
 		if err != nil {
 			log.Error("\tserver/server.go: Error trying to connect to route: ", err)
-			for {
-				select {
-				case <-time.After(DEFAULT_ROUTE_CONNECT):
-					log.Debug("\tserver/server.go:Connect to route timeout ,retry...")
-					continue
-				}
+			select {
+			case <-time.After(DEFAULT_ROUTE_CONNECT):
+				log.Debug("\tserver/server.go:Connect to route timeout ,retry...")
+				continue
 			}
 		}
 		route := &Route{
@@ -300,10 +298,10 @@ func (s *Server) createRoute(conn net.Conn) *client {
 func (s *Server) createRemote(conn net.Conn, route *Route) *client {
 	c := &client{srv: s, nc: conn, typ: REMOTE, route: route}
 
-	log.Info("new remote ", route.remoteUrl)
 	c.initClient()
 
 	s.mu.Lock()
+
 	if !s.running {
 		s.mu.Unlock()
 		return c
@@ -314,6 +312,9 @@ func (s *Server) createRemote(conn net.Conn, route *Route) *client {
 	c.SendInfo()
 
 	s.startGoRoutine(func() { c.readLoop() })
+	s.startGoRoutine(func() {
+		c.StartPing()
+	})
 
 	return c
 }
@@ -356,11 +357,9 @@ func (s *Server) ReadLocalBrokerIP() []string {
 }
 
 func (s *Server) startGoRoutine(f func()) {
-	s.gmu.Lock()
 	if s.running {
 		go f()
 	}
-	s.gmu.Unlock()
 }
 
 func (s *Server) removeClient(c *client) {
@@ -401,6 +400,7 @@ func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
 			break
 		}
 	}
+	// _, exist := s.remotes[url]
 	if !exist {
 		s.startGoRoutine(func() {
 			s.connectRouter(url, remoteID)
@@ -408,11 +408,11 @@ func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
 	}
 }
 
-func (s *Server) BroadcastInfoMessage(rid string, msg message.Message) {
+func (s *Server) BroadcastInfoMessage(remoteID string, msg message.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range s.remotes {
-		if r.route.remoteID == rid {
+		if r.route.remoteID == remoteID {
 			continue
 		}
 		r.writeMessage(msg)

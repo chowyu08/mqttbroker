@@ -2,7 +2,6 @@ package server
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -63,14 +62,10 @@ type subscription struct {
 }
 
 func (c *client) SendInfo() {
-	infoMsg := message.NewPublishMessage()
-	infoMsg.SetTopic([]byte(BrokerInfoTopic))
 	localIP := strings.Split(c.nc.LocalAddr().String(), ":")[0]
-	ipaddr := localIP + ":" + c.srv.info.Cluster.Port
-	info := fmt.Sprintf(`{"remoteID":"%s","url":"%s","isForward":false}`, c.srv.ID, ipaddr)
-	infoMsg.SetPayload([]byte(info))
-	infoMsg.SetQoS(0)
-	infoMsg.SetRetain(false)
+	url := localIP + ":" + c.srv.info.Cluster.Port
+
+	infoMsg := NewInfo(c.srv.ID, url, false)
 	err := c.writeMessage(infoMsg)
 	if err != nil {
 		log.Error("\tserver/client.go: send info message error, ", err)
@@ -78,8 +73,19 @@ func (c *client) SendInfo() {
 
 }
 
+func (c *client) StartPing() {
+	timeTicker := time.NewTicker(time.Second * 15)
+	ping := message.NewPingreqMessage()
+	for {
+		select {
+		case <-timeTicker.C:
+			c.writeMessage(ping)
+			//process error
+		}
+	}
+}
+
 func (c *client) SendConnect() {
-	log.Info("send connect")
 	clientID := GenUniqueId()
 	c.clientID = clientID
 	connMsg := message.NewConnectMessage()

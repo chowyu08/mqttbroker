@@ -22,15 +22,16 @@ func (c *client) ProcessInfo(msg *message.PublishMessage) {
 	rurl := gjson.GetBytes(msg.Payload(), "url").String()
 	isForward := gjson.GetBytes(msg.Payload(), "isForward ").Bool()
 
-	// if info is self.
-	if rid == s.ID {
-		log.Info("recv self info")
-		c.Close()
+	if rid == "" {
+		log.Error("\tserver/client.go: receive info message error with remoteID is null")
 		return
 	}
 
-	if rid == "" {
-		log.Error("\tserver/client.go: receive info message error with remoteID is null")
+	if rid == s.ID {
+		log.Info("recv self info")
+		if !isForward {
+			c.Close() //close connet self
+		}
 		return
 	}
 
@@ -41,10 +42,19 @@ func (c *client) ProcessInfo(msg *message.PublishMessage) {
 		}
 		c.route = route
 
-		info := fmt.Sprintf(`{"remoteID":"%s","url":"%s","isForward ":true}`, rid, rurl)
-		msg.SetPayload([]byte(info))
-		s.BroadcastInfoMessage(rid, msg)
+		infoMsg := NewInfo(rid, rurl, true)
+		s.BroadcastInfoMessage(rid, infoMsg)
 	}
 	s.ValidAndProcessRemoteInfo(rid, rurl)
 
+}
+
+func NewInfo(sid, url string, isforword bool) *message.PublishMessage {
+	infoMsg := message.NewPublishMessage()
+	infoMsg.SetTopic([]byte(BrokerInfoTopic))
+	info := fmt.Sprintf(`{"remoteID":"%s","url":"%s","isForward":%t}`, sid, url, isforword)
+	infoMsg.SetPayload([]byte(info))
+	infoMsg.SetQoS(0)
+	infoMsg.SetRetain(false)
+	return infoMsg
 }
