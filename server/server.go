@@ -137,7 +137,7 @@ func (s *Server) connectRouter(url, remoteID string) {
 			log.Error("Error trying to connect to route: ", err)
 			select {
 			case <-time.After(DEFAULT_ROUTE_CONNECT):
-				log.Debug("\tserver/server.go:Connect to route timeout ,retry...")
+				log.Debug("Connect to route timeout ,retry...")
 				continue
 			}
 		}

@@ -80,8 +80,10 @@ func (c *client) StartPing() {
 	for {
 		select {
 		case <-timeTicker.C:
-			c.writeMessage(ping)
-			//process error
+			err := c.writeMessage(ping)
+			if err != nil {
+				log.Error("ping error: ", err)
+			}
 		}
 	}
 }

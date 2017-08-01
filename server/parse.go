@@ -61,7 +61,7 @@ func (c *client) parse(buf []byte) {
 	case SUBACK:
 		//log.Info("Recv suback message.....")
 	case UNSUBSCRIBE:
-		//log.Info("Recv unsubscribe message.....")
+		log.Info("Recv unsubscribe message.....")
 		c.ProcessUnSubscribe(buf)
 	case UNSUBACK:
 		//log.Info("Recv unsuback message.....")
