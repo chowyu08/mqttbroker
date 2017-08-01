@@ -1,3 +1,6 @@
 .gitignore
 broker
 tls/*
+broker.exe
+log/
+

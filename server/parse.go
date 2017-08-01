@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/smallnest/rpcx/log"
+	log "github.com/cihub/seelog"
 )
 
 const (
@@ -56,7 +56,7 @@ func (c *client) parse(buf []byte) {
 		//log.Info("Recv publish rel message..........")
 		c.ProcessPubREL(buf)
 	case SUBSCRIBE:
-		//log.Info("Recv subscribe message.....")
+		log.Info("Recv subscribe message.....")
 		c.ProcessSubscribe(buf)
 	case SUBACK:
 		//log.Info("Recv suback message.....")
@@ -71,7 +71,7 @@ func (c *client) parse(buf []byte) {
 	case PINGRESP:
 		//log.Info("Recv PINGRESP message..........")
 	case DISCONNECT:
-		//log.Info("Recv DISCONNECT message.......")
+		log.Info("Recv DISCONNECT message.......")
 		c.Close()
 	default:
 		log.Info("Recv Unknow message.......")

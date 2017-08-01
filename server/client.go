@@ -68,13 +68,14 @@ func (c *client) SendInfo() {
 	infoMsg := NewInfo(c.srv.ID, url, false)
 	err := c.writeMessage(infoMsg)
 	if err != nil {
-		log.Error("\tserver/client.go: send info message error, ", err)
+		log.Error("send info message error, ", err)
+		return
 	}
-
+	// log.Info("send info success")
 }
 
 func (c *client) StartPing() {
-	timeTicker := time.NewTicker(time.Second * 15)
+	timeTicker := time.NewTicker(time.Second * 30)
 	ping := message.NewPingreqMessage()
 	for {
 		select {
@@ -86,6 +87,7 @@ func (c *client) StartPing() {
 }
 
 func (c *client) SendConnect() {
+
 	clientID := GenUniqueId()
 	c.clientID = clientID
 	connMsg := message.NewConnectMessage()
@@ -93,8 +95,10 @@ func (c *client) SendConnect() {
 	connMsg.SetVersion(0x04)
 	err := c.writeMessage(connMsg)
 	if err != nil {
-		log.Error("\tserver/client.go: send connect message error, ", err)
+		log.Error("send connect message error, ", err)
+		return
 	}
+	// log.Info("send connet success")
 }
 
 func (c *client) initClient() {
@@ -114,7 +118,7 @@ func (c *client) readLoop() {
 	for {
 		nowTime := uint16(time.Now().Unix())
 		if 0 != keeplive && nowTime-lastIn > keeplive*3/2 {
-			log.Error("\tserver/client.go: Client has exceeded timeout, disconnecting.")
+			log.Error("Client has exceeded timeout, disconnecting.")
 			c.Close()
 			break
 		}
@@ -122,10 +126,10 @@ func (c *client) readLoop() {
 		buf, err := c.ReadPacket()
 		if err != nil {
 			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
-				// log.Error("\tserver/client.go: read timeout")
+				// log.Error("read timeout")
 				continue
 			}
-			log.Error("\tserver/client.go: read buf err: ", err)
+			log.Error("read buf err: ", err)
 			c.Close()
 			break
 		}
@@ -163,7 +167,7 @@ func (c *client) Close() {
 			// log.Info("remove Sub")
 			err := srv.sl.Remove(sub)
 			if err != nil {
-				log.Error("\tserver/client.go: closed client but remove sublist error, ", err)
+				log.Error("closed client but remove sublist error, ", err)
 			}
 			if c.typ == CLIENT {
 				srv.BroadcastUnSubscribe(sub)
@@ -182,7 +186,7 @@ func (c *client) Close() {
 			srv.startGoRoutine(func() {
 				err := sub.client.writeMessage(willMsg)
 				if err != nil {
-					log.Error("\tserver/client.go: process will message for psub error,  ", err)
+					log.Error("process will message for psub error,  ", err)
 				}
 			})
 
@@ -193,7 +197,7 @@ func (c *client) Close() {
 				if sub != nil {
 					err := sub.client.writeMessage(willMsg)
 					if err != nil {
-						log.Error("\tserver/client.go: process will message for qsub error,  ", err)
+						log.Error("process will message for qsub error,  ", err)
 					}
 				}
 				srv.queues[topic] = (srv.queues[topic] + 1) % len(r.qsubs)
@@ -217,7 +221,7 @@ func (c *client) ProcessConnAck(buf []byte) {
 	ackMsg := message.NewConnackMessage()
 	_, err := ackMsg.Decode(buf)
 	if err != nil {
-		log.Error("\tserver/client.go: Decode Connack Message error: ", err)
+		log.Error("Decode Connack Message error: ", err)
 		if typ == CLIENT {
 			c.Close()
 		}
@@ -225,7 +229,7 @@ func (c *client) ProcessConnAck(buf []byte) {
 	}
 	rc := ackMsg.ReturnCode()
 	if rc != message.ConnectionAccepted {
-		log.Error("\tserver/client.go: Connect error with the returnCode is: ", rc)
+		log.Error("Connect error with the returnCode is: ", rc)
 		if typ == CLIENT {
 			c.Close()
 		}
@@ -254,7 +258,7 @@ func (c *client) ProcessConnect(msg []byte) {
 	_, err := connMsg.Decode(msg)
 	if err != nil {
 		if !message.ValidConnackError(err) {
-			log.Error("\tserver/client.go: Decode Connection Message error: ", err)
+			log.Error("Decode Connection Message error: ", err)
 			if typ == CLIENT {
 				c.Close()
 			}
@@ -306,7 +310,7 @@ func (c *client) ProcessConnect(msg []byte) {
 connback:
 	err1 := c.writeMessage(connack)
 	if err1 != nil {
-		log.Error("\tserver/client.go: send connack error, ", err1)
+		log.Error("send connack error, ", err1)
 	}
 }
 
@@ -328,7 +332,7 @@ func (c *client) ProcessSubscribe(buf []byte) {
 	_, err := msg.Decode(buf)
 
 	if err != nil {
-		log.Error("\tserver/client.go: Decode Subscribe Message error: ", err)
+		log.Error("Decode Subscribe Message error: ", err)
 		if typ == CLIENT {
 			c.Close()
 		}
@@ -369,7 +373,7 @@ func (c *client) ProcessSubscribe(buf []byte) {
 
 			err := srv.sl.Insert(sub)
 			if err != nil {
-				log.Error("\tserver/client.go: Insert subscription error: ", err)
+				log.Error("Insert subscription error: ", err)
 				retcodes = append(retcodes, message.QosFailure)
 			}
 			retcodes = append(retcodes, qos[i])
@@ -382,7 +386,7 @@ func (c *client) ProcessSubscribe(buf []byte) {
 	}
 
 	if err := suback.AddReturnCodes(retcodes); err != nil {
-		log.Error("\tserver/client.go: add return suback code error, ", err)
+		log.Error("add return suback code error, ", err)
 		if typ == CLIENT {
 			c.Close()
 		}
@@ -396,7 +400,7 @@ func (c *client) ProcessSubscribe(buf []byte) {
 
 	err1 := c.writeMessage(suback)
 	if err1 != nil {
-		log.Error("\tserver/client.go: send suback error, ", err1)
+		log.Error("send suback error, ", err1)
 	}
 	for _, t := range topics {
 		srv.startGoRoutine(func() {
@@ -421,7 +425,7 @@ func (c *client) ProcessUnSubscribe(msg []byte) {
 	unsub := message.NewUnsubscribeMessage()
 	_, err := unsub.Decode(msg)
 	if err != nil {
-		log.Error("\tserver/client.go: Decode UnSubscribe Message error: ", err)
+		log.Error("Decode UnSubscribe Message error: ", err)
 		if typ == CLIENT {
 			c.Close()
 		}
@@ -447,7 +451,7 @@ func (c *client) ProcessUnSubscribe(msg []byte) {
 
 	err1 := c.writeMessage(resp)
 	if err1 != nil {
-		log.Error("\tserver/client.go: send ubsuback error, ", err1)
+		log.Error("send ubsuback error, ", err1)
 	}
 }
 
@@ -466,7 +470,7 @@ func (c *client) ProcessPing() {
 	respMsg := message.NewPingrespMessage()
 	err := c.writeMessage(respMsg)
 	if err != nil {
-		log.Error("\tserver/client.go: send pingresp error, ", err)
+		log.Error("send pingresp error, ", err)
 	}
 }
 
@@ -480,7 +484,7 @@ func (c *client) ProcessPublish(msg []byte) {
 	pubMsg := message.NewPublishMessage()
 	_, err := pubMsg.Decode(msg)
 	if err != nil {
-		log.Error("\tserver/client.go: Decode Publish Message error: ", err)
+		log.Error("Decode Publish Message error: ", err)
 		if c.typ == CLIENT {
 			c.Close()
 		}
@@ -500,7 +504,7 @@ func (c *client) ProcessPublish(msg []byte) {
 		srv.startGoRoutine(func() {
 			err := srv.rl.Insert(pubMsg.Topic(), msg)
 			if err != nil {
-				log.Error("\tserver/client.go: Insert Retain Message error: ", err)
+				log.Error("Insert Retain Message error: ", err)
 			}
 		})
 	}
@@ -517,7 +521,7 @@ func (c *client) ProcessPublish(msg []byte) {
 		resp.SetPacketId(pubMsg.PacketId())
 		err := c.writeMessage(resp)
 		if err != nil {
-			log.Error("\tserver/client.go: send pubrec error, ", err)
+			log.Error("send pubrec error, ", err)
 		}
 
 	case message.QosAtLeastOnce:
@@ -525,7 +529,7 @@ func (c *client) ProcessPublish(msg []byte) {
 		resp.SetPacketId(pubMsg.PacketId())
 
 		if err := c.writeMessage(resp); err != nil {
-			log.Error("\tserver/client.go: send puback error, ", err)
+			log.Error("send puback error, ", err)
 		}
 		c.ProcessPublishMessage(msg, topic)
 
@@ -559,7 +563,7 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 			if sub != nil {
 				err := sub.client.writeBuffer(buf)
 				if err != nil {
-					log.Error("\tserver/client.go: process message for psub error,  ", err)
+					log.Error("process message for psub error,  ", err)
 				}
 			}
 		})
@@ -577,7 +581,7 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 			if sub != nil {
 				err := sub.client.writeBuffer(buf)
 				if err != nil {
-					log.Error("\tserver/client.go: process will message for qsub error,  ", err)
+					log.Error("process will message for qsub error,  ", err)
 				}
 			}
 			s.queues[topic] = (s.queues[topic] + 1) % len(r.qsubs)
@@ -591,7 +595,7 @@ func (c *client) ProcessPubREL(msg []byte) {
 	pubrel := message.NewPubrelMessage()
 	_, err := pubrel.Decode(msg)
 	if err != nil {
-		log.Error("\tserver/client.go: Decode Pubrel Message error: ", err)
+		log.Error("Decode Pubrel Message error: ", err)
 		return
 	}
 	c.mu.Lock()
@@ -599,7 +603,7 @@ func (c *client) ProcessPubREL(msg []byte) {
 	exist := false
 	key := incoming + string(pubrel.PacketId())
 	if buf, exist = c.packets[key]; !exist {
-		log.Error("\tserver/client.go: search qos 2 Message error ")
+		log.Error("search qos 2 Message error ")
 		return
 	}
 
@@ -620,7 +624,7 @@ func (c *client) ProcessPubREC(msg []byte) {
 	pubRec := message.NewPubrecMessage()
 	_, err := pubRec.Decode(msg)
 	if err != nil {
-		log.Error("\tserver/client.go: Decode Pubrec Message error: ", err)
+		log.Error("Decode Pubrec Message error: ", err)
 		return
 	}
 	c.mu.Lock()
@@ -636,7 +640,7 @@ func (c *client) ProcessPubAck(msg []byte) {
 	puback := message.NewPubackMessage()
 	_, err := puback.Decode(msg)
 	if err != nil {
-		log.Error("\tserver/client.go: Decode PubAck Message error: ", err)
+		log.Error("Decode PubAck Message error: ", err)
 		return
 	}
 	key := outgoing + string(puback.PacketId())
@@ -650,7 +654,7 @@ func (c *client) ProcessPubComp(msg []byte) {
 	pubcomp := message.NewPubcompMessage()
 	_, err := pubcomp.Decode(msg)
 	if err != nil {
-		log.Error("\tserver/client.go: Decode PubAck Message error: ", err)
+		log.Error("Decode PubAck Message error: ", err)
 		return
 	}
 	key := outgoing + string(pubcomp.PacketId())

@@ -134,7 +134,7 @@ func (s *Server) connectRouter(url, remoteID string) {
 	for s.running {
 		conn, err := net.Dial("tcp", url)
 		if err != nil {
-			log.Error("\tserver/server.go: Error trying to connect to route: ", err)
+			log.Error("Error trying to connect to route: ", err)
 			select {
 			case <-time.After(DEFAULT_ROUTE_CONNECT):
 				log.Debug("\tserver/server.go:Connect to route timeout ,retry...")
@@ -164,7 +164,7 @@ func (s *Server) AcceptClientsLoop(tlsRequire bool) {
 
 	l, e := net.Listen("tcp", hp)
 	if e != nil {
-		log.Error("\tserver/server.go: Error listening on ", hp, e)
+		log.Error("Error listening on ", hp, e)
 		return
 	}
 
@@ -173,7 +173,7 @@ func (s *Server) AcceptClientsLoop(tlsRequire bool) {
 		conn, err := l.Accept()
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Temporary() {
-				log.Error("\tserver/server.go: Temporary Client Accept Error(%v), sleeping %dms",
+				log.Error("Temporary Client Accept Error(%v), sleeping %dms",
 					ne, tmpDelay/time.Millisecond)
 				time.Sleep(tmpDelay)
 				tmpDelay *= 2
@@ -181,7 +181,7 @@ func (s *Server) AcceptClientsLoop(tlsRequire bool) {
 					tmpDelay = ACCEPT_MAX_SLEEP
 				}
 			} else {
-				log.Error("\tserver/server.go: Accept error: %v", err)
+				log.Error("Accept error: %v", err)
 			}
 			continue
 		}
@@ -207,7 +207,7 @@ func (s *Server) createClient(conn net.Conn, tlsRequire bool) *client {
 	c.mu.Lock()
 
 	if c.tlsRequired {
-		log.Info("\tserver/server.go: statting TLS Client connection handshake")
+		log.Info("statting TLS Client connection handshake")
 		c.nc = tls.Server(c.nc, s.info.TLSConfig)
 		conn := c.nc.(*tls.Conn)
 
@@ -218,7 +218,7 @@ func (s *Server) createClient(conn net.Conn, tlsRequire bool) *client {
 		// Force handshake
 		c.mu.Unlock()
 		if err := conn.Handshake(); err != nil {
-			log.Error("\tserver/server.go: TLS handshake error, ", err)
+			log.Error("TLS handshake error, ", err)
 			return nil
 		}
 		conn.SetReadDeadline(time.Time{})
@@ -308,12 +308,13 @@ func (s *Server) createRemote(conn net.Conn, route *Route) *client {
 	}
 	s.mu.Unlock()
 
-	c.mu.Lock()
+	s.startGoRoutine(func() {
+		c.readLoop()
+	})
+
 	c.SendConnect()
 	c.SendInfo()
 
-	s.startGoRoutine(func() { c.readLoop() })
-	c.mu.Unlock()
 	s.startGoRoutine(func() {
 		c.StartPing()
 	})
@@ -329,7 +330,7 @@ func TlsTimeout(c *client, conn *tls.Conn) {
 	}
 	cs := conn.ConnectionState()
 	if !cs.HandshakeComplete {
-		log.Error("\tserver/server.go: TLS handshake timeout")
+		log.Error("TLS handshake timeout")
 		c.Close()
 	}
 }
@@ -359,9 +360,11 @@ func (s *Server) ReadLocalBrokerIP() []string {
 }
 
 func (s *Server) startGoRoutine(f func()) {
+	s.gmu.Lock()
 	if s.running {
 		go f()
 	}
+	s.gmu.Unlock()
 }
 
 func (s *Server) removeClient(c *client) {
@@ -393,41 +396,44 @@ func GenUniqueId() string {
 
 func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	exist := false
-	for _, r := range s.remotes {
-		if r.route.remoteUrl == url {
-			r.route.remoteID = remoteID
+	for _, v := range s.remotes {
+		if v.route.remoteUrl == url {
+			if v.route.remoteID == "" || v.route.remoteID != remoteID {
+				v.route.remoteID = remoteID
+			}
 			exist = true
-			break
 		}
 	}
-	// _, exist := s.remotes[url]
+	s.mu.Unlock()
 	if !exist {
 		s.startGoRoutine(func() {
 			s.connectRouter(url, remoteID)
 		})
 	}
+	// log.Info("ValidAndProcessRemoteInfo success ")
 }
 
 func (s *Server) BroadcastInfoMessage(remoteID string, msg message.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range s.remotes {
-		// if r.route.remoteID == remoteID {
-		// 	continue
-		// }
+		if r.route.remoteID == remoteID {
+			continue
+		}
 		r.writeMessage(msg)
 	}
+	// log.Info("BroadcastInfoMessage success ")
 }
 
 func (s *Server) BroadcastSubscribeMessage(buf []byte) {
-	log.Info("remotes: ", s.remotes)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range s.remotes {
 		r.writeBuffer(buf)
 	}
+	// log.Info("BroadcastSubscribeMessage remotes: ", s.remotes)
 }
 
 func (s *Server) BroadcastUnSubscribeMessage(buf []byte) {
@@ -437,11 +443,11 @@ func (s *Server) BroadcastUnSubscribeMessage(buf []byte) {
 	for _, r := range s.remotes {
 		r.writeBuffer(buf)
 	}
+	// log.Info("BroadcastUnSubscribeMessage remotes: ", s.remotes)
 }
 
 func (s *Server) BroadcastUnSubscribe(sub *subscription) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+
 	var topic []byte
 	if sub.queue {
 		front := []byte("$queue/")
@@ -450,14 +456,17 @@ func (s *Server) BroadcastUnSubscribe(sub *subscription) {
 	ubsub := message.NewUnsubscribeMessage()
 	ubsub.AddTopic(topic)
 
+	s.mu.Lock()
 	for _, r := range s.remotes {
 		r.writeMessage(ubsub)
 	}
+	s.mu.Unlock()
 }
 
 func (s *Server) SendLocalSubsToRouter(c *client) {
 	s.mu.Lock()
 	if len(s.clients) < 1 {
+		s.mu.Unlock()
 		return
 	}
 	subMsg := message.NewSubscribeMessage()
@@ -481,6 +490,6 @@ func (s *Server) SendLocalSubsToRouter(c *client) {
 
 	err := c.writeMessage(subMsg)
 	if err != nil {
-		log.Error("\tserver/server.go: Send localsubs To Router error :", err)
+		log.Error("Send localsubs To Router error :", err)
 	}
 }
