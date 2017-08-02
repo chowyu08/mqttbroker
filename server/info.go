@@ -41,13 +41,21 @@ func (c *client) ProcessInfo(msg *message.PublishMessage) {
 			remoteID:  rid,
 		}
 		c.route = route
-
-		infoMsg := NewInfo(rid, rurl, true)
-		s.startGoRoutine(func() {
-			s.BroadcastInfoMessage(rid, infoMsg)
-		})
 	}
-	s.ValidAndProcessRemoteInfo(rid, rurl)
+	exist := s.CheckRemoteExist(rid, rurl)
+
+	if !exist {
+		s.startGoRoutine(func() {
+			s.connectRouter(rurl, rid)
+		})
+
+		if !isForward {
+			infoMsg := NewInfo(rid, rurl, true)
+			s.startGoRoutine(func() {
+				s.BroadcastInfoMessage(rid, infoMsg)
+			})
+		}
+	}
 	return
 }
 

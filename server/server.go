@@ -21,7 +21,7 @@ const (
 	// ACCEPT_MAX_SLEEP is the maximum acceptable sleep times on temporary errors
 	ACCEPT_MAX_SLEEP = 10 * time.Second
 	// DEFAULT_ROUTE_CONNECT Route solicitation intervals.
-	DEFAULT_ROUTE_CONNECT = 2 * time.Second
+	DEFAULT_ROUTE_CONNECT = 10 * time.Second
 	// DEFAULT_TLS_TIMEOUT
 	DEFAULT_TLS_TIMEOUT = 5 * time.Second
 )
@@ -56,10 +56,13 @@ type Server struct {
 	gmu           sync.Mutex
 	listener      net.Listener
 	routeListener net.Listener
-	clients       map[string]*client
-	routers       map[string]*client
-	remotes       map[string]*client
+	clients       map[uint64]*client
+	routers       map[uint64]*client
+	remotes       map[uint64]*client
 	queues        map[string]int
+	gcid          uint64
+	grid          uint64
+	gmid          uint64
 	sl            *Sublist
 	rl            *RetainList
 }
@@ -68,9 +71,9 @@ func New(info *Info) *Server {
 	return &Server{
 		ID:      GenUniqueId(),
 		info:    info,
-		clients: make(map[string]*client),
-		routers: make(map[string]*client),
-		remotes: make(map[string]*client),
+		clients: make(map[uint64]*client),
+		routers: make(map[uint64]*client),
+		remotes: make(map[uint64]*client),
 		queues:  make(map[string]int),
 		sl:      NewSublist(),
 		rl:      NewRetainList(),
@@ -306,6 +309,9 @@ func (s *Server) createRemote(conn net.Conn, route *Route) *client {
 		s.mu.Unlock()
 		return c
 	}
+	//save remote info and send local subs
+	s.remotes[c.cid] = c
+
 	s.mu.Unlock()
 
 	s.startGoRoutine(func() {
@@ -368,7 +374,7 @@ func (s *Server) startGoRoutine(f func()) {
 }
 
 func (s *Server) removeClient(c *client) {
-	cid := c.clientID
+	cid := c.cid
 	typ := c.typ
 
 	s.mu.Lock()
@@ -394,25 +400,42 @@ func GenUniqueId() string {
 	// return GetMd5String()
 }
 
-func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
+func (s *Server) CheckRemoteExist(remoteID, url string) bool {
 	s.mu.Lock()
 	exist := false
 	for _, v := range s.remotes {
 		if v.route.remoteUrl == url {
-			if v.route.remoteID == "" || v.route.remoteID != remoteID {
-				v.route.remoteID = remoteID
-			}
+			// if v.route.remoteID == "" || v.route.remoteID != remoteID {
+			v.route.remoteID = remoteID
+			// }
 			exist = true
+			break
 		}
 	}
 	s.mu.Unlock()
-	if !exist {
-		s.startGoRoutine(func() {
-			s.connectRouter(url, remoteID)
-		})
-	}
-	// log.Info("ValidAndProcessRemoteInfo success ")
+	return exist
+
 }
+
+// func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
+// 	s.mu.Lock()
+// 	exist := false
+// 	for _, v := range s.remotes {
+// 		if v.route.remoteUrl == url {
+// 			// if v.route.remoteID == "" || v.route.remoteID != remoteID {
+// 			v.route.remoteID = remoteID
+// 			// }
+// 			exist = true
+// 		}
+// 	}
+// 	s.mu.Unlock()
+// 	if !exist {
+// 		s.startGoRoutine(func() {
+// 			s.connectRouter(url, remoteID)
+// 		})
+// 	}
+// 	// log.Info("ValidAndProcessRemoteInfo success ")
+// }
 
 func (s *Server) BroadcastInfoMessage(remoteID string, msg message.Message) {
 	s.mu.Lock()

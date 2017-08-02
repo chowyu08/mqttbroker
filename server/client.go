@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/cihub/seelog"
@@ -32,6 +33,7 @@ const (
 )
 
 type client struct {
+	cid         uint64
 	typ         int
 	srv         *Server
 	nc          net.Conn
@@ -104,6 +106,14 @@ func (c *client) SendConnect() {
 }
 
 func (c *client) initClient() {
+	s := c.srv
+	if c.typ == CLIENT {
+		c.cid = atomic.AddUint64(&s.gcid, 1)
+	} else if c.typ == ROUTER {
+		c.cid = atomic.AddUint64(&s.grid, 1)
+	} else {
+		c.cid = atomic.AddUint64(&s.gmid, 1)
+	}
 	c.subs = make(map[string]*subscription)
 	c.packets = make(map[string][]byte)
 }
@@ -115,7 +125,7 @@ func (c *client) readLoop() {
 	if nc == nil {
 		return
 	}
-	// first := true
+	first := true
 	lastIn := uint16(time.Now().Unix())
 	for {
 		nowTime := uint16(time.Now().Unix())
@@ -136,7 +146,13 @@ func (c *client) readLoop() {
 			break
 		}
 		lastIn = uint16(time.Now().Unix())
-
+		if first {
+			if c.typ == CLIENT {
+				c.ProcessConnect(buf)
+				first = false
+				continue
+			}
+		}
 		c.parse(buf)
 
 		nc := c.nc
@@ -238,9 +254,9 @@ func (c *client) ProcessConnAck(buf []byte) {
 		return
 	}
 	//save remote info and send local subs
-	s.mu.Lock()
-	s.remotes[c.clientID] = c
-	s.mu.Unlock()
+	// s.mu.Lock()
+	// s.remotes[c.cid] = c
+	// s.mu.Unlock()
 
 	s.startGoRoutine(func() {
 		s.SendLocalSubsToRouter(c)
@@ -301,9 +317,9 @@ func (c *client) ProcessConnect(msg []byte) {
 
 	srv.mu.Lock()
 	if typ == CLIENT {
-		srv.clients[c.clientID] = c
+		srv.clients[c.cid] = c
 	} else if typ == ROUTER {
-		srv.routers[c.clientID] = c
+		srv.routers[c.cid] = c
 	}
 	srv.mu.Unlock()
 
