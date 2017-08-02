@@ -417,26 +417,6 @@ func (s *Server) CheckRemoteExist(remoteID, url string) bool {
 
 }
 
-// func (s *Server) ValidAndProcessRemoteInfo(remoteID, url string) {
-// 	s.mu.Lock()
-// 	exist := false
-// 	for _, v := range s.remotes {
-// 		if v.route.remoteUrl == url {
-// 			// if v.route.remoteID == "" || v.route.remoteID != remoteID {
-// 			v.route.remoteID = remoteID
-// 			// }
-// 			exist = true
-// 		}
-// 	}
-// 	s.mu.Unlock()
-// 	if !exist {
-// 		s.startGoRoutine(func() {
-// 			s.connectRouter(url, remoteID)
-// 		})
-// 	}
-// 	// log.Info("ValidAndProcessRemoteInfo success ")
-// }
-
 func (s *Server) BroadcastInfoMessage(remoteID string, msg message.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

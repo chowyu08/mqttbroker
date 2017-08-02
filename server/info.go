@@ -3,9 +3,9 @@ package server
 import (
 	"fmt"
 
+	simplejson "github.com/bitly/go-simplejson"
 	log "github.com/cihub/seelog"
 	"github.com/surgemq/message"
-	"github.com/tidwall/gjson"
 )
 
 func (c *client) ProcessInfo(msg *message.PublishMessage) {
@@ -18,9 +18,15 @@ func (c *client) ProcessInfo(msg *message.PublishMessage) {
 
 	log.Info("recv remoteInfo: ", string(msg.Payload()))
 
-	rid := gjson.GetBytes(msg.Payload(), "remoteID").String()
-	rurl := gjson.GetBytes(msg.Payload(), "url").String()
-	isForward := gjson.GetBytes(msg.Payload(), "isForward ").Bool()
+	js, e := simplejson.NewJson(msg.Payload())
+	if e != nil {
+		log.Warn("parse info message err", e)
+		return
+	}
+
+	rid := js.Get("remoteID").MustString()
+	rurl := js.Get("url").MustString()
+	isForward := js.Get("isForward").MustBool()
 
 	if rid == "" {
 		log.Error("receive info message error with remoteID is null")
@@ -35,27 +41,27 @@ func (c *client) ProcessInfo(msg *message.PublishMessage) {
 		return
 	}
 
+	exist := s.CheckRemoteExist(rid, rurl)
+	if !exist {
+		s.startGoRoutine(func() {
+			s.connectRouter(rurl, rid)
+		})
+	}
+	// log.Info("isforword: ", isForward)
 	if !isForward {
 		route := &Route{
 			remoteUrl: rurl,
 			remoteID:  rid,
 		}
 		c.route = route
-	}
-	exist := s.CheckRemoteExist(rid, rurl)
-
-	if !exist {
 		s.startGoRoutine(func() {
-			s.connectRouter(rurl, rid)
+			s.SendLocalSubsToRouter(c)
 		})
-
-		if !isForward {
-			infoMsg := NewInfo(rid, rurl, true)
-			s.startGoRoutine(func() {
-				s.BroadcastInfoMessage(rid, infoMsg)
-			})
-		}
+		// log.Info("BroadcastInfoMessage starting... ")
+		infoMsg := NewInfo(rid, rurl, true)
+		s.BroadcastInfoMessage(rid, infoMsg)
 	}
+
 	return
 }
 

@@ -257,10 +257,6 @@ func (c *client) ProcessConnAck(buf []byte) {
 	// s.mu.Lock()
 	// s.remotes[c.cid] = c
 	// s.mu.Unlock()
-
-	s.startGoRoutine(func() {
-		s.SendLocalSubsToRouter(c)
-	})
 }
 
 func (c *client) ProcessConnect(msg []byte) {
