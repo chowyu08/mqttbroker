@@ -128,45 +128,54 @@ func (c *client) readLoop() {
 	first := true
 	lastIn := uint16(time.Now().Unix())
 	for {
-		nowTime := uint16(time.Now().Unix())
-		if 0 != keeplive && nowTime-lastIn > keeplive*3/2 {
-			log.Error("Client has exceeded timeout, disconnecting.")
-			c.Close()
-			break
-		}
-
-		buf, err := c.ReadPacket()
-		if err != nil {
-			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
-				// log.Error("read timeout")
-				continue
+		select {
+		case <-c.closeCh:
+			c = nil
+			return
+		default:
+			nowTime := uint16(time.Now().Unix())
+			if 0 != keeplive && nowTime-lastIn > keeplive*3/2 {
+				log.Error("Client has exceeded timeout, disconnecting.")
+				c.Close()
+				return
 			}
-			log.Error("read buf err: ", err)
-			c.Close()
-			break
-		}
-		lastIn = uint16(time.Now().Unix())
-		if first {
-			if c.typ == CLIENT {
-				c.ProcessConnect(buf)
-				first = false
-				continue
+
+			buf, err := c.ReadPacket()
+			if err != nil {
+				if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+					// log.Error("read timeout")
+					continue
+				}
+				log.Error("read buf err: ", err)
+				c.Close()
+				return
 			}
-		}
-		c.parse(buf)
+			lastIn = uint16(time.Now().Unix())
+			if first {
+				if c.typ == CLIENT {
+					c.ProcessConnect(buf)
+					first = false
+					continue
+				}
+			}
+			c.parse(buf)
 
-		nc := c.nc
+			nc := c.nc
 
-		if nc == nil {
-			break
+			if nc == nil {
+				return
+			}
 		}
 	}
 }
 
 func (c *client) Close() {
+
 	c.mu.Lock()
 	nc := c.nc
 	srv := c.srv
+	username := c.username
+	clientID := c.clientID
 	willMsg := c.willMsg
 	c.mu.Unlock()
 
@@ -178,6 +187,7 @@ func (c *client) Close() {
 		nc.Close()
 		nc = nil
 	}
+
 	// log.Info("client closed with cid: ", c.clientID)
 	if srv != nil {
 		srv.removeClient(c)
@@ -191,41 +201,16 @@ func (c *client) Close() {
 				srv.BroadcastUnSubscribe(sub)
 			}
 		}
-	}
-	if willMsg != nil {
-		topic := string(willMsg.Topic())
-		r := srv.sl.Match(topic)
-		if len(r.qsubs) == 0 && len(r.psubs) == 0 {
-			return
+		if willMsg != nil {
+			srv.PublishMessage(willMsg)
 		}
-
-		for _, sub := range r.psubs {
-			//only CLIENT HAVE WILL MESSAGE
+		if c.typ == CLIENT {
 			srv.startGoRoutine(func() {
-				err := sub.client.writeMessage(willMsg)
-				if err != nil {
-					log.Error("process will message for psub error,  ", err)
-				}
+				srv.PublishOnDisconnectedMessage(username, clientID)
 			})
-
 		}
-		srv.mu.Lock()
-		for i, sub := range r.qsubs {
-			if cnt, exist := srv.queues[string(sub.topic)]; exist && i == cnt {
-				if sub != nil {
-					err := sub.client.writeMessage(willMsg)
-					if err != nil {
-						log.Error("process will message for qsub error,  ", err)
-					}
-				}
-				srv.queues[topic] = (srv.queues[topic] + 1) % len(r.qsubs)
-				break
-			}
-		}
-		srv.mu.Unlock()
-
 	}
-	c = nil
+	c.closeCh <- true
 }
 
 func (c *client) ProcessConnAck(buf []byte) {
@@ -318,6 +303,11 @@ func (c *client) ProcessConnect(msg []byte) {
 		srv.routers[c.cid] = c
 	}
 	srv.mu.Unlock()
+
+	srv.startGoRoutine(func() {
+		ip := c.nc.RemoteAddr().String()
+		srv.PublishOnConnectedMessage(ip, c.username, c.clientID)
+	})
 
 	connack.SetReturnCode(message.ConnectionAccepted)
 

@@ -71,8 +71,8 @@ func (c *client) parse(buf []byte) {
 	case PINGRESP:
 		//log.Info("Recv PINGRESP message..........")
 	case DISCONNECT:
-		// log.Info("Recv DISCONNECT message.......")
-		c.Close()
+		log.Info("Recv DISCONNECT message.......")
+		// c.Close()
 	default:
 		log.Info("Recv Unknow message.......")
 	}
