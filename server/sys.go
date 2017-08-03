@@ -3,7 +3,7 @@ package server
 import (
 	"fmt"
 
-	"github.com/smallnest/rpcx/log"
+	log "github.com/cihub/seelog"
 	"github.com/surgemq/message"
 )
 
