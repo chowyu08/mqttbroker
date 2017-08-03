@@ -21,7 +21,7 @@ const (
 	// ACCEPT_MAX_SLEEP is the maximum acceptable sleep times on temporary errors
 	ACCEPT_MAX_SLEEP = 10 * time.Second
 	// DEFAULT_ROUTE_CONNECT Route solicitation intervals.
-	DEFAULT_ROUTE_CONNECT = 10 * time.Second
+	DEFAULT_ROUTE_CONNECT = 5 * time.Second
 	// DEFAULT_TLS_TIMEOUT
 	DEFAULT_TLS_TIMEOUT = 5 * time.Second
 )
