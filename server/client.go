@@ -496,14 +496,6 @@ func (c *client) ProcessPublish(msg []byte) {
 	}
 	topic := string(pubMsg.Topic())
 
-	//process info message
-	if typ == ROUTER && topic == BrokerInfoTopic {
-		srv.startGoRoutine(func() {
-			c.ProcessInfo(pubMsg)
-		})
-		return
-	}
-
 	if pubMsg.Retain() {
 		srv.startGoRoutine(func() {
 			err := srv.rl.Insert(pubMsg.Topic(), msg)
@@ -547,6 +539,13 @@ func (c *client) ProcessPublishMessage(buf []byte, topic string) {
 	s := c.srv
 	typ := c.typ
 	if s == nil {
+		return
+	}
+	//process info message
+	if typ == ROUTER && topic == BrokerInfoTopic {
+		srv.startGoRoutine(func() {
+			c.ProcessInfo(pubMsg)
+		})
 		return
 	}
 
