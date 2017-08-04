@@ -21,13 +21,14 @@ const (
 )
 
 type AuthInfo struct {
+	User  string
 	Topic string
 	Auth  int
 }
 
 type ACLConfig struct {
 	File string
-	Keys map[string]AuthInfo
+	Keys []AuthInfo
 }
 
 var ACLInfo ACLInterface
@@ -49,7 +50,7 @@ func (c *ACLConfig) Prase() error {
 	f, err := os.Open(c.File)
 	defer f.Close()
 	if err != nil {
-		return errors.New("Open file" + configFile + " failed")
+		return errors.New("Open file" + c.File + " failed")
 	}
 	buf := bufio.NewReader(f)
 	var parseErr error
@@ -96,6 +97,6 @@ func isCommentOut(line string) bool {
 	}
 }
 
-func (c *Config) Key(key string) AuthInfo {
+func (c *ACLConfig) Key(key string) AuthInfo {
 	return c.Keys[key]
 }

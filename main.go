@@ -1,6 +1,7 @@
 package main
 
 import (
+	"broker/acl"
 	"broker/server"
 	"os"
 	"os/signal"
@@ -16,6 +17,9 @@ func main() {
 	if err != nil {
 		panic(err)
 		return
+	}
+	if info.Acl {
+		acl.AclConfigLoad("")
 	}
 	srv, errs := server.New(info)
 	if errs != nil {
