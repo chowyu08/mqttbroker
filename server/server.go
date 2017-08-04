@@ -27,25 +27,27 @@ const (
 )
 
 type Info struct {
-	Host      string
-	Port      string
-	Cluster   ClusterInfo
-	TlsInfo   TLSInfo
-	TlsHost   string
-	TlsPort   string
-	TLSConfig *tls.Config
+	Host    string      `json:"host"`
+	Port    string      `json:"port"`
+	Cluster ClusterInfo `json:"cluster"`
+	TlsInfo TLSInfo     `json:"tlsInfo"`
+	TlsHost string      `json:"tlsHost"`
+	TlsPort string      `json:"tlsPort"`
+	Acl     bool        `json:"acl"`
+	AclConf string      `json:"aclConf"`
 }
+
 type TLSInfo struct {
-	Verify   bool
-	CaFile   string
-	CertFile string
-	KeyFile  string
+	Verify   bool   `json:"verify"`
+	CaFile   string `json:"caFile"`
+	CertFile string `json:"certFile"`
+	KeyFile  string `json:"keyFile"`
 }
 
 type ClusterInfo struct {
-	Host    string
-	Port    string
-	Routers []string
+	Host    string   `json:"host"`
+	Port    string   `json:"port"`
+	Routers []string `json:"routers"`
 }
 
 type Server struct {
@@ -56,6 +58,7 @@ type Server struct {
 	gmu           sync.Mutex
 	listener      net.Listener
 	routeListener net.Listener
+	TLSConfig     *tls.Config
 	clients       map[uint64]*client
 	routers       map[uint64]*client
 	remotes       map[uint64]*client
@@ -67,17 +70,23 @@ type Server struct {
 	rl            *RetainList
 }
 
-func New(info *Info) *Server {
-	return &Server{
-		ID:      GenUniqueId(),
-		info:    info,
-		clients: make(map[uint64]*client),
-		routers: make(map[uint64]*client),
-		remotes: make(map[uint64]*client),
-		queues:  make(map[string]int),
-		sl:      NewSublist(),
-		rl:      NewRetainList(),
+func New(info *Info) (*Server, error) {
+	tlsconfig, err := NewTLSConfig(info.TlsInfo)
+	if err != nil {
+		log.Error("new tlsConfig error: ", err)
+		return nil, err
 	}
+	return &Server{
+		ID:        GenUniqueId(),
+		info:      info,
+		TLSConfig: tlsconfig,
+		clients:   make(map[uint64]*client),
+		routers:   make(map[uint64]*client),
+		remotes:   make(map[uint64]*client),
+		queues:    make(map[string]int),
+		sl:        NewSublist(),
+		rl:        NewRetainList(),
+	}, nil
 }
 
 func (s *Server) Start() {
@@ -211,7 +220,7 @@ func (s *Server) createClient(conn net.Conn, tlsRequire bool) *client {
 
 	if c.tlsRequired {
 		log.Info("statting TLS Client connection handshake")
-		c.nc = tls.Server(c.nc, s.info.TLSConfig)
+		c.nc = tls.Server(c.nc, s.TLSConfig)
 		conn := c.nc.(*tls.Conn)
 
 		// Setup the timeout

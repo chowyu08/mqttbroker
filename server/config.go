@@ -33,12 +33,6 @@ func LoadConfig() (*Info, error) {
 			return nil, err
 		}
 
-		info.TLSConfig, err = NewTLSConfig(info.TlsInfo)
-		if err != nil {
-			log.Error("\tserver/config.go: new tlsConfig error: ", err)
-			return nil, err
-		}
-
 		if info.TlsHost == "" {
 			info.TlsHost = "0.0.0.0"
 		}

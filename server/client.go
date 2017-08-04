@@ -489,12 +489,11 @@ func (c *client) ProcessPublish(msg []byte) {
 	_, err := pubMsg.Decode(msg)
 	if err != nil {
 		log.Error("Decode Publish Message error: ", err)
-		if c.typ == CLIENT {
+		if typ == CLIENT {
 			c.Close()
 		}
 		return
 	}
-	topic := string(pubMsg.Topic())
 
 	if pubMsg.Retain() {
 		srv.startGoRoutine(func() {
@@ -527,24 +526,25 @@ func (c *client) ProcessPublish(msg []byte) {
 		if err := c.writeMessage(resp); err != nil {
 			log.Error("send puback error, ", err)
 		}
-		c.ProcessPublishMessage(msg, topic)
+		c.ProcessPublishMessage(msg, pubMsg)
 
 	case message.QosAtMostOnce:
-		c.ProcessPublishMessage(msg, topic)
+		c.ProcessPublishMessage(msg, pubMsg)
 	}
 }
 
-func (c *client) ProcessPublishMessage(buf []byte, topic string) {
+func (c *client) ProcessPublishMessage(buf []byte, msg *message.PublishMessage) {
 
 	s := c.srv
 	typ := c.typ
 	if s == nil {
 		return
 	}
+	topic := string(msg.Topic())
 	//process info message
 	if typ == ROUTER && topic == BrokerInfoTopic {
-		srv.startGoRoutine(func() {
-			c.ProcessInfo(pubMsg)
+		s.startGoRoutine(func() {
+			c.ProcessInfo(msg)
 		})
 		return
 	}
@@ -619,7 +619,7 @@ func (c *client) ProcessPubREL(msg []byte) {
 	pubmsg := message.NewPublishMessage()
 	pubmsg.Decode(buf)
 
-	c.ProcessPublishMessage(buf, string(pubmsg.Topic()))
+	c.ProcessPublishMessage(buf, pubmsg)
 
 }
 

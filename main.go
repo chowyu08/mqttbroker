@@ -17,7 +17,11 @@ func main() {
 		panic(err)
 		return
 	}
-	srv := server.New(info)
+	srv, errs := server.New(info)
+	if errs != nil {
+		log.Error("new Server error: ", errs)
+		return
+	}
 	srv.Start()
 	s := waitForSignal()
 	log.Infof("signal got: %v ,broker closed.", s)
