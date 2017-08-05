@@ -22,7 +22,7 @@ func NewSYSMessage(topic, playload []byte) *message.PublishMessage {
 }
 
 func (s *Server) PublishOnConnectedMessage(ip, username, clientID string) {
-	onConnect := []byte(fmt.Sprintf(`{ipaddress:"%s",username:"%s",clientID:%s}`, ip, username, clientID))
+	onConnect := []byte(fmt.Sprintf(`{"ipaddress":"%s","username":"%s","clientID":"%s"}`, ip, username, clientID))
 	topic := []byte(ONCONENCTED + clientID)
 	msg := NewSYSMessage(topic, onConnect)
 
@@ -30,7 +30,7 @@ func (s *Server) PublishOnConnectedMessage(ip, username, clientID string) {
 }
 
 func (s *Server) PublishOnDisconnectedMessage(username, clientID string) {
-	onConnect := []byte(fmt.Sprintf(`{username:"%s",clientID:%s}`, username, clientID))
+	onConnect := []byte(fmt.Sprintf(`{"username":"%s","clientID":"%s"}`, username, clientID))
 	topic := []byte(ONDISCONENCTED + clientID)
 	msg := NewSYSMessage(topic, onConnect)
 	s.PublishMessage(msg)

@@ -10,35 +10,38 @@ import (
 	"strings"
 )
 
-type ACLInterface interface {
-	Key(key string) AuthInfo
-}
-
 const (
-	PUB    = 1
-	SUBS   = 2
-	PUBSUB = 3
+	PUB      = 1
+	SUB      = 2
+	PUBSUB   = 3
+	CLIENTID = "clientid"
+	USERNAME = "username"
+	IP       = "ip"
+	ALLOW    = "allow"
+	DENY     = "deny"
 )
 
 type AuthInfo struct {
-	User  string
-	Topic string
-	Auth  int
+	Auth   string
+	Typ    string
+	Val    string
+	Topic  string
+	PubSub int
 }
 
 type ACLConfig struct {
 	File string
-	Keys []AuthInfo
+	Info []*AuthInfo
 }
 
-var ACLInfo ACLInterface
+var ACLInfo ACLConfig
 
 func AclConfigLoad(file string) {
 	var aclConf string
 	if file == "" {
 		aclConf = "./conf/acl.conf"
 	}
-	config := &ACLConfig{aclConf, make(map[string]AuthInfo)}
+	config := ACLConfig{aclConf, make([]*AuthInfo, 0, 4)}
 	if err := config.Prase(); err != nil {
 		fmt.Println("WARN:load conf file failure,", err)
 		//don't panic in init func!!!
@@ -56,7 +59,7 @@ func (c *ACLConfig) Prase() error {
 	var parseErr error
 	for {
 		line, err := buf.ReadString('\n')
-		// line = strings.TrimSpace(line)
+		line = strings.TrimSpace(line)
 		if isCommentOut(line) {
 			continue
 		}
@@ -65,21 +68,33 @@ func (c *ACLConfig) Prase() error {
 		}
 		// fmt.Println(line)
 		tmpArr := strings.Fields(line)
-		if len(tmpArr) != 3 {
+		if len(tmpArr) != 5 {
 			parseErr = errors.New("\"" + line + "\" format is error")
 			break
 		}
-		var auth int
-		auth, err = strconv.Atoi(tmpArr[2])
+		if tmpArr[0] != ALLOW && tmpArr[0] != DENY {
+			parseErr = errors.New("\"" + line + "\" format is error")
+			break
+		}
+		if tmpArr[1] != CLIENTID && tmpArr[1] != USERNAME && tmpArr[1] != IP {
+			parseErr = errors.New("\"" + line + "\" format is error")
+			break
+		}
+		var pubsub int
+		pubsub, err = strconv.Atoi(tmpArr[4])
 		if err != nil {
 			parseErr = errors.New("\"" + line + "\" format is error")
 			break
 		}
-		tmpAuth := AuthInfo{
-			Topic: tmpArr[1],
-			Auth:  auth,
+
+		tmpAuth := &AuthInfo{
+			Auth:   tmpArr[0],
+			Typ:    tmpArr[1],
+			Val:    tmpArr[2],
+			Topic:  tmpArr[3],
+			PubSub: pubsub,
 		}
-		c.Keys[tmpArr[0]] = tmpAuth
+		c.Info = append(c.Info, tmpAuth)
 		if err != nil {
 			if err != io.EOF {
 				parseErr = err
@@ -95,8 +110,4 @@ func isCommentOut(line string) bool {
 	} else {
 		return false
 	}
-}
-
-func (c *ACLConfig) Key(key string) AuthInfo {
-	return c.Keys[key]
 }

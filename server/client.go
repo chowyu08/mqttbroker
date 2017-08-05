@@ -42,6 +42,8 @@ type client struct {
 	username    string
 	password    string
 	keeplive    uint16
+	localIP     string
+	remoteIP    string
 	tlsRequired bool
 	subs        map[string]*subscription
 	willMsg     *message.PublishMessage
@@ -64,8 +66,7 @@ type subscription struct {
 }
 
 func (c *client) SendInfo() {
-	localIP := strings.Split(c.nc.LocalAddr().String(), ":")[0]
-	url := localIP + ":" + c.srv.info.Cluster.Port
+	url := c.localIP + ":" + c.srv.info.Cluster.Port
 
 	infoMsg := NewInfo(c.srv.ID, url, false)
 	err := c.writeMessage(infoMsg)
@@ -116,6 +117,8 @@ func (c *client) initClient() {
 	}
 	c.subs = make(map[string]*subscription)
 	c.packets = make(map[string][]byte)
+	c.localIP = strings.Split(c.nc.LocalAddr().String(), ":")[0]
+	c.remoteIP = strings.Split(c.nc.RemoteAddr().String(), ":")[0]
 }
 
 func (c *client) readLoop() {
@@ -348,15 +351,23 @@ func (c *client) ProcessSubscribe(buf []byte) {
 	suback.SetPacketId(msg.PacketId())
 
 	for i, t := range topics {
-		if _, exist := c.subs[string(t)]; !exist {
+		topic := string(t)
+		//check topic auth for client
+		if typ == CLIENT {
+			if !c.CheckSubAuth(topic) {
+				retcodes = append(retcodes, message.QosFailure)
+				continue
+			}
+		}
+		if _, exist := c.subs[topic]; !exist {
 			queue := false
-			if strings.HasPrefix(string(t), "$queue/") {
+			if strings.HasPrefix(topic, "$queue/") {
 				if len(t) > 7 {
 					t = t[7:]
 					queue = true
 					srv.mu.Lock()
-					if _, exists := srv.queues[string(t)]; !exists {
-						srv.queues[string(t)] = 0
+					if _, exists := srv.queues[topic]; !exists {
+						srv.queues[topic] = 0
 					}
 					srv.mu.Unlock()
 				} else {
@@ -372,7 +383,7 @@ func (c *client) ProcessSubscribe(buf []byte) {
 			}
 
 			c.mu.Lock()
-			c.subs[string(t)] = sub
+			c.subs[topic] = sub
 			c.mu.Unlock()
 
 			err := srv.sl.Insert(sub)
@@ -383,7 +394,7 @@ func (c *client) ProcessSubscribe(buf []byte) {
 			retcodes = append(retcodes, qos[i])
 		} else {
 			//if exist ,check whether qos change
-			c.subs[string(t)].qos = qos[i]
+			c.subs[topic].qos = qos[i]
 			retcodes = append(retcodes, qos[i])
 		}
 
@@ -493,6 +504,13 @@ func (c *client) ProcessPublish(msg []byte) {
 			c.Close()
 		}
 		return
+	}
+	//check topic auth
+	topic := string(pubMsg.Topic())
+	if typ == CLIENT {
+		if !c.CheckPubAuth(topic) {
+			return
+		}
 	}
 
 	if pubMsg.Retain() {

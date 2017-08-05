@@ -71,22 +71,25 @@ type Server struct {
 }
 
 func New(info *Info) (*Server, error) {
-	tlsconfig, err := NewTLSConfig(info.TlsInfo)
-	if err != nil {
-		log.Error("new tlsConfig error: ", err)
-		return nil, err
+	server := &Server{
+		ID:      GenUniqueId(),
+		info:    info,
+		clients: make(map[uint64]*client),
+		routers: make(map[uint64]*client),
+		remotes: make(map[uint64]*client),
+		queues:  make(map[string]int),
+		sl:      NewSublist(),
+		rl:      NewRetainList(),
 	}
-	return &Server{
-		ID:        GenUniqueId(),
-		info:      info,
-		TLSConfig: tlsconfig,
-		clients:   make(map[uint64]*client),
-		routers:   make(map[uint64]*client),
-		remotes:   make(map[uint64]*client),
-		queues:    make(map[string]int),
-		sl:        NewSublist(),
-		rl:        NewRetainList(),
-	}, nil
+	if server.info.TlsPort != "" {
+		tlsconfig, err := NewTLSConfig(server.info.TlsInfo)
+		if err != nil {
+			log.Error("new tlsConfig error: ", err)
+			return nil, err
+		}
+		server.TLSConfig = tlsconfig
+	}
+	return server, nil
 }
 
 func (s *Server) Start() {
