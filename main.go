@@ -19,7 +19,7 @@ func main() {
 		return
 	}
 	if info.Acl {
-		acl.AclConfigLoad("")
+		acl.AclConfigLoad(info.AclConf)
 	}
 	srv, errs := server.New(info)
 	if errs != nil {
