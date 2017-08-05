@@ -65,23 +65,13 @@ $ go run main.go
 
 | TOPIC         | Info                            |       Description  |
 | ------------- |---------------------------------|---------------|
-| $SYS/brokers/clients/connected/{clientid}     | {"ipaddress":"127.0.01","username":"admin","clientID":"0001"}          | Publish when a client connected |
-| $SYS/brokers/clients/disconnected/{clientid}  | {"username":"admin","clientID":"001"}      |  Publish when a client disconnected |
+| $SYS/brokers/clients/connected/{clientid}     | {"ipaddress":"127.0.01","username":"admin","clientID":"0001"}          | Publish when client connected |
+| $SYS/brokers/clients/disconnected/{clientid}  | {"username":"admin","clientID":"001"}      |  Publish when client disconnected |
 
-### ACL confi
+### ACL Configure
 The ACL rules define:
 ~~~
 Allow | type | value | Topics | pubsub
-~~~
-Client match acl rule one by one
-~~~
-          ---------              ---------              ---------
-Client -> | Rule1 | --nomatch--> | Rule2 | --nomatch--> | Rule3 | --> 
-          ---------              ---------              ---------
-              |                      |                      |
-            match                  match                  match
-             \|/                    \|/                    \|/
-        allow | deny           allow | deny           allow | deny
 ~~~
 ACL config file
 ~~~
@@ -94,6 +84,16 @@ allow      username    admin       #            3
 allow      clientid    *           toCloud/%c   1
 allow      username    *           toCloud/%u   1
 deny       clientid    *           #            3
+~~~
+Client match acl rule one by one
+~~~
+          ---------              ---------              ---------
+Client -> | Rule1 | --nomatch--> | Rule2 | --nomatch--> | Rule3 | --> 
+          ---------              ---------              ---------
+              |                      |                      |
+            match                  match                  match
+             \|/                    \|/                    \|/
+        allow | deny           allow | deny           allow | deny
 ~~~
 
 ## Performance
