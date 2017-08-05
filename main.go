@@ -12,15 +12,20 @@ import (
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	runtime.GC()
 	info, err := server.LoadConfig()
 	if err != nil {
 		panic(err)
 		return
 	}
+
 	if info.Acl {
-		acl.AclConfigLoad(info.AclConf)
+		err := acl.AclConfigLoad(info.AclConf)
+		if err != nil {
+			log.Error("Load acl conf error: ", err)
+			return
+		}
 	}
+
 	srv, errs := server.New(info)
 	if errs != nil {
 		log.Error("new Server error: ", errs)

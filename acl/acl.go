@@ -3,7 +3,6 @@ package acl
 import (
 	"bufio"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"strconv"
@@ -34,26 +33,25 @@ type ACLConfig struct {
 	Info []*AuthInfo
 }
 
-var ACLInfo ACLConfig
+var ACLInfo *ACLConfig
 
-func AclConfigLoad(file string) {
-	var aclConf string
+func AclConfigLoad(file string) error {
 	if file == "" {
-		aclConf = "./conf/acl.conf"
+		file = "./conf/acl.conf"
 	}
-	config := ACLConfig{aclConf, make([]*AuthInfo, 0, 4)}
-	if err := config.Prase(); err != nil {
-		fmt.Println("WARN:load conf file failure,", err)
-		//don't panic in init func!!!
-		//panic(err)
+	ACLInfo := &ACLConfig{
+		File: file,
+		Info: make([]*AuthInfo, 0, 4),
 	}
-	ACLInfo = config
+	err := ACLInfo.Prase()
+	return err
 }
+
 func (c *ACLConfig) Prase() error {
 	f, err := os.Open(c.File)
 	defer f.Close()
 	if err != nil {
-		return errors.New("Open file" + c.File + " failed")
+		return err
 	}
 	buf := bufio.NewReader(f)
 	var parseErr error
