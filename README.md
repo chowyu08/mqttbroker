@@ -29,7 +29,9 @@ $ go run main.go
 		"caFile": "tls/ca/cacert.pem",
 		"certFile": "tls/server/cert.pem",
 		"keyFile": "tls/server/key.pem"
-	}
+	},
+	"acl":true,
+	"aclConf":"conf/acl.conf"
 }
 ~~~
 
