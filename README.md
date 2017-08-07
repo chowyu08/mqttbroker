@@ -134,5 +134,5 @@ Client -> | Rule1 | --nomatch--> | Rule2 | --nomatch--> | Rule3 | -->
 
 ## License
 
-* All rights reserved.
+* Apache License Version 2.0
 
