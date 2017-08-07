@@ -33,18 +33,19 @@ type ACLConfig struct {
 	Info []*AuthInfo
 }
 
-var ACLInfo *ACLConfig
-
-func AclConfigLoad(file string) error {
+func AclConfigLoad(file string) (*ACLConfig, error) {
 	if file == "" {
 		file = "./conf/acl.conf"
 	}
-	ACLInfo := &ACLConfig{
+	aclconifg := &ACLConfig{
 		File: file,
 		Info: make([]*AuthInfo, 0, 4),
 	}
-	err := ACLInfo.Prase()
-	return err
+	err := aclconifg.Prase()
+	if err != nil {
+		return nil, err
+	}
+	return aclconifg, err
 }
 
 func (c *ACLConfig) Prase() error {

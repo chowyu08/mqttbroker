@@ -2,7 +2,7 @@ package acl
 
 import "strings"
 
-func CheckSubAuth(ip, username, clientid, topic string) bool {
+func CheckSubAuth(ACLInfo *ACLConfig, ip, username, clientid, topic string) bool {
 	for _, info := range ACLInfo.Info {
 		typ := info.Typ
 		switch typ {
@@ -26,14 +26,8 @@ func CheckSubAuth(ip, username, clientid, topic string) bool {
 func (a *AuthInfo) checkSubWithClientID(clientid, topic string) bool {
 	auth := false
 	des := strings.Replace(a.Topic, "%c", clientid, -1)
-	if a.Typ == "*" {
+	if a.Val == "*" || a.Val == clientid {
 		if subTopicMatch(topic, des) && (a.PubSub == SUB || a.PubSub == PUBSUB) {
-			if a.Auth == ALLOW {
-				auth = true
-			}
-		}
-	} else {
-		if subTopicMatch(topic, des) && (a.PubSub == SUB || a.PubSub == PUBSUB) && a.Val == clientid {
 			if a.Auth == ALLOW {
 				auth = true
 			}
@@ -45,14 +39,8 @@ func (a *AuthInfo) checkSubWithClientID(clientid, topic string) bool {
 func (a *AuthInfo) checkSubWithUsername(username, topic string) bool {
 	auth := false
 	des := strings.Replace(a.Topic, "%u", username, -1)
-	if a.Typ == "*" {
+	if a.Val == "*" || a.Val == username {
 		if subTopicMatch(topic, des) && (a.PubSub == SUB || a.PubSub == PUBSUB) {
-			if a.Auth == ALLOW {
-				auth = true
-			}
-		}
-	} else {
-		if subTopicMatch(topic, des) && (a.PubSub == SUB || a.PubSub == PUBSUB) && a.Val == username {
 			if a.Auth == ALLOW {
 				auth = true
 			}
@@ -64,14 +52,8 @@ func (a *AuthInfo) checkSubWithUsername(username, topic string) bool {
 func (a *AuthInfo) checkSubWithip(ip, topic string) bool {
 	auth := false
 	des := a.Topic
-	if a.Typ == "*" {
+	if a.Val == "*" || a.Val == ip {
 		if subTopicMatch(topic, des) && (a.PubSub == SUB || a.PubSub == PUBSUB) {
-			if a.Auth == ALLOW {
-				auth = true
-			}
-		}
-	} else {
-		if subTopicMatch(topic, des) && (a.PubSub == SUB || a.PubSub == PUBSUB) && a.Val == ip {
 			if a.Auth == ALLOW {
 				auth = true
 			}
@@ -80,7 +62,7 @@ func (a *AuthInfo) checkSubWithip(ip, topic string) bool {
 	return auth
 }
 
-func CheckPubAuth(ip, username, clientid, topic string) bool {
+func CheckPubAuth(ACLInfo *ACLConfig, ip, username, clientid, topic string) bool {
 	for _, info := range ACLInfo.Info {
 		typ := info.Typ
 		switch typ {
@@ -104,14 +86,8 @@ func CheckPubAuth(ip, username, clientid, topic string) bool {
 func (a *AuthInfo) checkPubWithClientID(clientid, topic string) bool {
 	auth := false
 	des := strings.Replace(a.Topic, "%c", clientid, -1)
-	if a.Typ == "*" {
+	if a.Val == "*" || a.Val == clientid {
 		if pubTopicMatch(topic, des) && (a.PubSub == PUB || a.PubSub == PUBSUB) {
-			if a.Auth == ALLOW {
-				auth = true
-			}
-		}
-	} else {
-		if pubTopicMatch(topic, des) && (a.PubSub == PUB || a.PubSub == PUBSUB) && a.Val == clientid {
 			if a.Auth == ALLOW {
 				auth = true
 			}
@@ -123,14 +99,8 @@ func (a *AuthInfo) checkPubWithClientID(clientid, topic string) bool {
 func (a *AuthInfo) checkPubWithUsername(username, topic string) bool {
 	auth := false
 	des := strings.Replace(a.Topic, "%u", username, -1)
-	if a.Typ == "*" {
+	if a.Val == "*" || a.Val == username {
 		if pubTopicMatch(topic, des) && (a.PubSub == PUB || a.PubSub == PUBSUB) {
-			if a.Auth == ALLOW {
-				auth = true
-			}
-		}
-	} else {
-		if pubTopicMatch(topic, des) && (a.PubSub == PUB || a.PubSub == PUBSUB) && a.Val == username {
 			if a.Auth == ALLOW {
 				auth = true
 			}
@@ -142,14 +112,8 @@ func (a *AuthInfo) checkPubWithUsername(username, topic string) bool {
 func (a *AuthInfo) checkPubWithip(ip, topic string) bool {
 	auth := false
 	des := a.Topic
-	if a.Typ == "*" {
+	if a.Typ == "*" || a.Val == ip {
 		if pubTopicMatch(topic, des) && (a.PubSub == PUB || a.PubSub == PUBSUB) {
-			if a.Auth == ALLOW {
-				auth = true
-			}
-		}
-	} else {
-		if pubTopicMatch(topic, des) && (a.PubSub == PUB || a.PubSub == PUBSUB) && a.Val == ip {
 			if a.Auth == ALLOW {
 				auth = true
 			}
@@ -185,7 +149,7 @@ func subTopicMatch(pub, des string) bool {
 		if i > len(topic)-1 {
 			return false
 		}
-		if t == "#" {
+		if t == "*" {
 			return true
 		}
 		if t == "+" || "+" == topic[i] || t == topic[i] {

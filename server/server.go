@@ -1,6 +1,7 @@
 package server
 
 import (
+	"broker/acl"
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/tls"
@@ -59,6 +60,7 @@ type Server struct {
 	listener      net.Listener
 	routeListener net.Listener
 	TLSConfig     *tls.Config
+	AclConfig     *acl.ACLConfig
 	clients       map[uint64]*client
 	routers       map[uint64]*client
 	remotes       map[uint64]*client
@@ -88,6 +90,15 @@ func New(info *Info) (*Server, error) {
 			return nil, err
 		}
 		server.TLSConfig = tlsconfig
+	}
+
+	if server.info.Acl {
+		aclconfig, err := acl.AclConfigLoad(server.info.AclConf)
+		if err != nil {
+			log.Error("Load acl conf error: ", err)
+			return nil, err
+		}
+		server.AclConfig = aclconfig
 	}
 	return server, nil
 }
