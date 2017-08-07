@@ -26,7 +26,7 @@ func CheckSubAuth(ACLInfo *ACLConfig, ip, username, clientid, topic string) bool
 func (a *AuthInfo) checkSubWithClientID(clientid, topic string) bool {
 	auth := false
 	if a.Val == "*" || a.Val == clientid {
-		for _, tp := range a.Topic {
+		for _, tp := range a.Topics {
 			des := strings.Replace(tp, "%c", clientid, -1)
 			if subTopicMatch(topic, des) && (a.PubSub == SUB || a.PubSub == PUBSUB) {
 				if a.Auth == ALLOW {
@@ -42,7 +42,7 @@ func (a *AuthInfo) checkSubWithClientID(clientid, topic string) bool {
 func (a *AuthInfo) checkSubWithUsername(username, topic string) bool {
 	auth := false
 	if a.Val == "*" || a.Val == username {
-		for _, tp := range a.Topic {
+		for _, tp := range a.Topics {
 			des := strings.Replace(tp, "%u", username, -1)
 			if subTopicMatch(topic, des) && (a.PubSub == SUB || a.PubSub == PUBSUB) {
 				if a.Auth == ALLOW {
@@ -57,7 +57,7 @@ func (a *AuthInfo) checkSubWithUsername(username, topic string) bool {
 func (a *AuthInfo) checkSubWithip(ip, topic string) bool {
 	auth := false
 	if a.Val == "*" || a.Val == ip {
-		for _, tp := range a.Topic {
+		for _, tp := range a.Topics {
 			des := tp
 			if subTopicMatch(topic, des) && (a.PubSub == SUB || a.PubSub == PUBSUB) {
 				if a.Auth == ALLOW {
@@ -93,7 +93,7 @@ func CheckPubAuth(ACLInfo *ACLConfig, ip, username, clientid, topic string) bool
 func (a *AuthInfo) checkPubWithClientID(clientid, topic string) bool {
 	auth := false
 	if a.Val == "*" || a.Val == clientid {
-		for _, tp := range a.Topic {
+		for _, tp := range a.Topics {
 			des := strings.Replace(tp, "%c", clientid, -1)
 			if pubTopicMatch(topic, des) && (a.PubSub == PUB || a.PubSub == PUBSUB) {
 				if a.Auth == ALLOW {
@@ -108,7 +108,7 @@ func (a *AuthInfo) checkPubWithClientID(clientid, topic string) bool {
 func (a *AuthInfo) checkPubWithUsername(username, topic string) bool {
 	auth := false
 	if a.Val == "*" || a.Val == username {
-		for _, tp := range a.Topic {
+		for _, tp := range a.Topics {
 			des := strings.Replace(tp, "%u", username, -1)
 			if pubTopicMatch(topic, des) && (a.PubSub == PUB || a.PubSub == PUBSUB) {
 				if a.Auth == ALLOW {
@@ -124,7 +124,7 @@ func (a *AuthInfo) checkPubWithUsername(username, topic string) bool {
 func (a *AuthInfo) checkPubWithip(ip, topic string) bool {
 	auth := false
 	if a.Typ == "*" || a.Val == ip {
-		for _, tp := range a.Topic {
+		for _, tp := range a.Topics {
 			des := tp
 			if pubTopicMatch(topic, des) && (a.PubSub == PUB || a.PubSub == PUBSUB) {
 				if a.Auth == ALLOW {

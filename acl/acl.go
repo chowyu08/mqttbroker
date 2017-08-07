@@ -25,7 +25,7 @@ type AuthInfo struct {
 	Typ    string
 	Val    string
 	PubSub int
-	Topic  []string
+	Topics []string
 }
 
 type ACLConfig struct {
@@ -91,7 +91,7 @@ func (c *ACLConfig) Prase() error {
 			Auth:   tmpArr[0],
 			Typ:    tmpArr[1],
 			Val:    tmpArr[2],
-			Topic:  topics,
+			Topics: topics,
 			PubSub: pubsub,
 		}
 		c.Info = append(c.Info, tmpAuth)

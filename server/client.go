@@ -354,7 +354,7 @@ func (c *client) ProcessSubscribe(buf []byte) {
 		topic := string(t)
 		//check topic auth for client
 		if typ == CLIENT && srv.info.Acl {
-			if !c.CheckSubAuth(topic) {
+			if !c.CheckTopicAuth(topic, SUB) {
 				log.Error("CheckSubAuth failed")
 				retcodes = append(retcodes, message.QosFailure)
 				continue
@@ -509,7 +509,7 @@ func (c *client) ProcessPublish(msg []byte) {
 	//check topic auth
 	topic := string(pubMsg.Topic())
 	if typ == CLIENT && srv.info.Acl {
-		if !c.CheckPubAuth(topic) {
+		if !c.CheckTopicAuth(topic, PUB) {
 			log.Error("CheckPubAuth failed")
 			return
 		}

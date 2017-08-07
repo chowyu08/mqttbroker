@@ -2,18 +2,20 @@ package server
 
 import "broker/acl"
 
-func (c *client) CheckSubAuth(topic string) bool {
-	ip := c.remoteIP
-	username := c.username
-	clientid := c.clientID
-	aclInfo := c.srv.AclConfig
-	return acl.CheckSubAuth(aclInfo, ip, username, clientid, topic)
-}
+const (
+	PUB = 1
+	SUB = 2
+)
 
-func (c *client) CheckPubAuth(topic string) bool {
+func (c *client) CheckTopicAuth(topic string, typ int) bool {
 	ip := c.remoteIP
 	username := c.username
 	clientid := c.clientID
 	aclInfo := c.srv.AclConfig
-	return acl.CheckPubAuth(aclInfo, ip, username, clientid, topic)
+	if typ == PUB {
+		return acl.CheckPubAuth(aclInfo, ip, username, clientid, topic)
+	} else if typ == SUB {
+		return acl.CheckSubAuth(aclInfo, ip, username, clientid, topic)
+	}
+	return false
 }
