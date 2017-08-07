@@ -24,8 +24,8 @@ type AuthInfo struct {
 	Auth   string
 	Typ    string
 	Val    string
-	Topic  string
 	PubSub int
+	Topic  []string
 }
 
 type ACLConfig struct {
@@ -80,17 +80,18 @@ func (c *ACLConfig) Prase() error {
 			break
 		}
 		var pubsub int
-		pubsub, err = strconv.Atoi(tmpArr[4])
+		pubsub, err = strconv.Atoi(tmpArr[3])
 		if err != nil {
 			parseErr = errors.New("\"" + line + "\" format is error")
 			break
 		}
 
+		topics := strings.Split(tmpArr[4], ",")
 		tmpAuth := &AuthInfo{
 			Auth:   tmpArr[0],
 			Typ:    tmpArr[1],
 			Val:    tmpArr[2],
-			Topic:  tmpArr[3],
+			Topic:  topics,
 			PubSub: pubsub,
 		}
 		c.Info = append(c.Info, tmpAuth)
