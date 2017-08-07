@@ -71,11 +71,11 @@ $ go run main.go
 | $SYS/brokers/clients/disconnected/{clientid}  | {"username":"admin","clientID":"001"}      |  Publish when client disconnected |
 
 ### ACL Configure
-The ACL rules define:
+#### The ACL rules define:
 ~~~
 Allow | type | value | Topics | pubsub
 ~~~
-ACL config file
+#### ACL Config
 ~~~
 ## type clientid , username, ipaddr
 ##pub 1 ,  sub 2,  pubsub 3
@@ -85,6 +85,25 @@ allow      clientid    0001        #            3
 allow      username    admin       #            3
 allow      clientid    *           toCloud/%c   1
 allow      username    *           toCloud/%u   1
+deny       clientid    *           #            3
+~~~
+
+~~~
+#allow local sub $SYS topic
+allow      ip          127.0.0.1   $SYS/#       2
+~~~
+~~~
+#allow client with the id 0001 or username with admin pub sub all topic
+allow      clientid    0001        #            3
+allow      username    admin       #            3
+~~~
+~~~
+#allow all client pub the topic toCloud/{clientid/username}
+allow      clientid    *           toCloud/%c   1
+allow      username    *           toCloud/%u   1
+~~~
+~~~
+#deny all client pub sub all topic
 deny       clientid    *           #            3
 ~~~
 Client match acl rule one by one
