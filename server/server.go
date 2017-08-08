@@ -315,7 +315,7 @@ func (s *Server) AcceptRoutersLoop() {
 }
 
 func (s *Server) createRoute(conn net.Conn) *client {
-	c := &client{srv: s, nc: conn, typ: ROUTER, isWs: true}
+	c := &client{srv: s, nc: conn, typ: ROUTER, isWs: false}
 	c.initClient()
 
 	s.mu.Lock()
@@ -331,7 +331,7 @@ func (s *Server) createRoute(conn net.Conn) *client {
 }
 
 func (s *Server) createRemote(conn net.Conn, route *Route) *client {
-	c := &client{srv: s, nc: conn, typ: REMOTE, route: route, isWs: true}
+	c := &client{srv: s, nc: conn, typ: REMOTE, route: route, isWs: false}
 
 	c.initClient()
 

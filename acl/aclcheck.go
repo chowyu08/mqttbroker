@@ -7,77 +7,86 @@ func CheckTopicAuth(ACLInfo *ACLConfig, typ int, ip, username, clientid, topic s
 		ctyp := info.Typ
 		switch ctyp {
 		case CLIENTID:
-			if info.checkWithClientID(typ, clientid, topic) {
-				return true
+			if match, auth := info.checkWithClientID(typ, clientid, topic); match {
+				return auth
 			}
 		case USERNAME:
-			if info.checkWithUsername(typ, username, topic) {
-				return true
+			if match, auth := info.checkWithUsername(typ, username, topic); match {
+				return auth
 			}
 		case IP:
-			if info.checkWithIP(typ, ip, topic) {
-				return true
+			if match, auth := info.checkWithIP(typ, ip, topic); match {
+				return auth
 			}
 		}
 	}
 	return false
 }
 
-func (a *AuthInfo) checkWithClientID(typ int, clientid, topic string) bool {
+func (a *AuthInfo) checkWithClientID(typ int, clientid, topic string) (bool, bool) {
 	auth := false
+	match := false
 	if a.Val == "*" || a.Val == clientid {
 		for _, tp := range a.Topics {
 			des := strings.Replace(tp, "%c", clientid, -1)
 			if typ == PUB {
 				if pubTopicMatch(topic, des) {
+					match = true
 					auth = a.checkAuth(PUB)
 				}
 			} else if typ == SUB {
 				if subTopicMatch(topic, des) {
+					match = true
 					auth = a.checkAuth(SUB)
 				}
 			}
 		}
 	}
-	return auth
+	return match, auth
 }
 
-func (a *AuthInfo) checkWithUsername(typ int, username, topic string) bool {
+func (a *AuthInfo) checkWithUsername(typ int, username, topic string) (bool, bool) {
 	auth := false
+	match := false
 	if a.Val == "*" || a.Val == username {
 		for _, tp := range a.Topics {
 			des := strings.Replace(tp, "%u", username, -1)
 			if typ == PUB {
 				if pubTopicMatch(topic, des) {
+					match = true
 					auth = a.checkAuth(PUB)
 				}
 			} else if typ == SUB {
 				if subTopicMatch(topic, des) {
+					match = true
 					auth = a.checkAuth(SUB)
 				}
 			}
 		}
 	}
-	return auth
+	return match, auth
 }
 
-func (a *AuthInfo) checkWithIP(typ int, ip, topic string) bool {
+func (a *AuthInfo) checkWithIP(typ int, ip, topic string) (bool, bool) {
 	auth := false
+	match := false
 	if a.Val == "*" || a.Val == ip {
 		for _, tp := range a.Topics {
 			des := tp
 			if typ == PUB {
 				if pubTopicMatch(topic, des) {
 					auth = a.checkAuth(PUB)
+					match = true
 				}
 			} else if typ == SUB {
 				if subTopicMatch(topic, des) {
 					auth = a.checkAuth(SUB)
+					match = true
 				}
 			}
 		}
 	}
-	return auth
+	return match, auth
 }
 
 func (a *AuthInfo) checkAuth(typ int) bool {
