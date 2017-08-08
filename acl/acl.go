@@ -85,8 +85,9 @@ func (c *ACLConfig) Prase() error {
 			parseErr = errors.New("\"" + line + "\" format is error")
 			break
 		}
-
-		topics := strings.Split(tmpArr[4], ",")
+		topicStr := strings.Replace(tmpArr[4], " ", "", -1)
+		topicStr = strings.Replace(topicStr, "\n", "", -1)
+		topics := strings.Split(topicStr, ",")
 		tmpAuth := &AuthInfo{
 			Auth:   tmpArr[0],
 			Typ:    tmpArr[1],

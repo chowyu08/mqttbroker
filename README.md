@@ -2,7 +2,7 @@ MQTT Broker
 ============
 
 ## About
-Golang MQTT Broker, Version 3.1.1, and compatible
+Golang MQTT Broker, Version 3.1.1, and Compatible
 for [eclipse paho client](https://github.com/eclipse?utf8=%E2%9C%93&q=mqtt&type=&language=)
 
 ## RUNNING
@@ -20,7 +20,7 @@ $ go run main.go
 	"cluster": {
 		"host": "0.0.0.0",
 		"port": "1993",
-		"routers": []
+		"routers": ["192.168.10.11:1993","192.168.10.12:1993"]
 	},
 	"tlsPort": "8883",
 	"tlsHost": "0.0.0.0",
@@ -39,9 +39,9 @@ $ go run main.go
 
 * Supports QOS 0 1 and 2 
 
-* TLS Support
+* TLS/SSL Support
 
-* Broker Cluster
+* Cluster Support
 
 * Supports retained messages
 
@@ -52,9 +52,6 @@ $ go run main.go
 * $SYS topics  
 
 * Flexible  ACL
-
-* Message re-delivery (DUP) (Future)
-
 
 ### QUEUE SUBSCRIBE
 
