@@ -40,6 +40,7 @@ type client struct {
 	srv         *Server
 	nc          net.Conn
 	wsConn      *websocket.Conn
+	isWs        bool
 	mu          sync.Mutex
 	clientID    string
 	username    string
@@ -120,7 +121,7 @@ func (c *client) initClient() {
 	}
 	c.subs = make(map[string]*subscription)
 	c.packets = make(map[string][]byte)
-	if c.wsConn != nil {
+	if c.isWs {
 		c.localIP = strings.Split(c.wsConn.LocalAddr().String(), ":")[0]
 		c.remoteIP = strings.Split(c.wsConn.RemoteAddr().String(), ":")[0]
 	} else {
@@ -203,7 +204,6 @@ func (c *client) Close() {
 		ws.Close()
 		ws = nil
 	}
-
 	// log.Info("client closed with cid: ", c.clientID)
 	if srv != nil {
 		srv.removeClient(c)
@@ -703,7 +703,7 @@ func (c *client) ProcessPubComp(msg []byte) {
 func (c *client) writeBuffer(buf []byte) error {
 	var err error
 	c.mu.Lock()
-	if c.wsConn == nil {
+	if !c.isWs {
 		nc := c.nc
 		if nc == nil {
 			c.mu.Unlock()
@@ -713,6 +713,10 @@ func (c *client) writeBuffer(buf []byte) error {
 		_, err = nc.Write(buf)
 	} else {
 		ws := c.wsConn
+		if ws == nil {
+			c.mu.Unlock()
+			return errors.New("ws conn is nul")
+		}
 		err = ws.WriteMessage(websocket.BinaryMessage, buf)
 	}
 
