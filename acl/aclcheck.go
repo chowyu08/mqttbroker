@@ -125,7 +125,7 @@ func subTopicMatch(pub, des string) bool {
 		if i > len(topic)-1 {
 			return false
 		}
-		if t == "*" {
+		if t == "#" {
 			return true
 		}
 		if t == "+" || "+" == topic[i] || t == topic[i] {
