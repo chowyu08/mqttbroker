@@ -32,6 +32,9 @@ type Info struct {
 	Port    string      `json:"port"`
 	Cluster ClusterInfo `json:"cluster"`
 	TlsInfo TLSInfo     `json:"tlsInfo"`
+	WsPath  string      `json:"wsPath"`
+	WsPort  string      `json:"wsPort"`
+	WsTLS   bool        `json:"wsTLS"`
 	TlsHost string      `json:"tlsHost"`
 	TlsPort string      `json:"tlsPort"`
 	Acl     bool        `json:"acl"`
@@ -111,6 +114,12 @@ func (s *Server) Start() {
 	if s.info.Port != "" {
 		s.startGoRoutine(func() {
 			s.AcceptClientsLoop(false)
+		})
+	}
+
+	if s.info.WsPort != "" {
+		s.startGoRoutine(func() {
+			s.AcceptWSLoop()
 		})
 	}
 
@@ -219,7 +228,7 @@ func (s *Server) AcceptClientsLoop(tlsRequire bool) {
 }
 
 func (s *Server) createClient(conn net.Conn, tlsRequire bool) *client {
-	c := &client{srv: s, nc: conn, typ: CLIENT, tlsRequired: tlsRequire}
+	c := &client{srv: s, nc: conn, typ: CLIENT, tlsRequired: tlsRequire, wsConn: nil}
 	c.initClient()
 
 	s.mu.Lock()
@@ -306,7 +315,7 @@ func (s *Server) AcceptRoutersLoop() {
 }
 
 func (s *Server) createRoute(conn net.Conn) *client {
-	c := &client{srv: s, nc: conn, typ: ROUTER}
+	c := &client{srv: s, nc: conn, typ: ROUTER, wsConn: nil}
 	c.initClient()
 
 	s.mu.Lock()
@@ -322,7 +331,7 @@ func (s *Server) createRoute(conn net.Conn) *client {
 }
 
 func (s *Server) createRemote(conn net.Conn, route *Route) *client {
-	c := &client{srv: s, nc: conn, typ: REMOTE, route: route}
+	c := &client{srv: s, nc: conn, typ: REMOTE, route: route, wsConn: nil}
 
 	c.initClient()
 

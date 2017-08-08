@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gorilla/websocket"
+
 	log "github.com/cihub/seelog"
 	"github.com/surgemq/message"
 )
@@ -37,6 +39,7 @@ type client struct {
 	typ         int
 	srv         *Server
 	nc          net.Conn
+	wsConn      *websocket.Conn
 	mu          sync.Mutex
 	clientID    string
 	username    string
@@ -117,8 +120,14 @@ func (c *client) initClient() {
 	}
 	c.subs = make(map[string]*subscription)
 	c.packets = make(map[string][]byte)
-	c.localIP = strings.Split(c.nc.LocalAddr().String(), ":")[0]
-	c.remoteIP = strings.Split(c.nc.RemoteAddr().String(), ":")[0]
+	if c.wsConn != nil {
+		c.localIP = strings.Split(c.wsConn.LocalAddr().String(), ":")[0]
+		c.remoteIP = strings.Split(c.wsConn.RemoteAddr().String(), ":")[0]
+	} else {
+		c.localIP = strings.Split(c.nc.LocalAddr().String(), ":")[0]
+		c.remoteIP = strings.Split(c.nc.RemoteAddr().String(), ":")[0]
+	}
+
 }
 
 func (c *client) readLoop() {
@@ -176,19 +185,23 @@ func (c *client) Close() {
 
 	c.mu.Lock()
 	nc := c.nc
+	ws := c.wsConn
 	srv := c.srv
 	username := c.username
 	clientID := c.clientID
 	willMsg := c.willMsg
-	c.mu.Unlock()
 
-	if nc == nil {
+	c.mu.Unlock()
+	if nc == nil && ws == nil {
 		return
 	}
-
 	if nc != nil {
 		nc.Close()
 		nc = nil
+	}
+	if ws != nil {
+		ws.Close()
+		ws = nil
 	}
 
 	// log.Info("client closed with cid: ", c.clientID)
@@ -308,7 +321,7 @@ func (c *client) ProcessConnect(msg []byte) {
 	srv.mu.Unlock()
 
 	srv.startGoRoutine(func() {
-		ip := c.nc.RemoteAddr().String()
+		ip := c.remoteIP
 		srv.PublishOnConnectedMessage(ip, c.username, c.clientID)
 	})
 
@@ -688,14 +701,21 @@ func (c *client) ProcessPubComp(msg []byte) {
 }
 
 func (c *client) writeBuffer(buf []byte) error {
+	var err error
 	c.mu.Lock()
-	nc := c.nc
-	if nc == nil {
-		c.mu.Unlock()
-		return errors.New("conn is nul")
+	if c.wsConn == nil {
+		nc := c.nc
+		if nc == nil {
+			c.mu.Unlock()
+			return errors.New("conn is nul")
+		}
+		// nc.SetWriteDeadline(time.Now().Add(DEFAULT_WRITE_TIMEOUT))
+		_, err = nc.Write(buf)
+	} else {
+		ws := c.wsConn
+		err = ws.WriteMessage(websocket.BinaryMessage, buf)
 	}
-	// nc.SetWriteDeadline(time.Now().Add(DEFAULT_WRITE_TIMEOUT))
-	_, err := nc.Write(buf)
+
 	// nc.SetWriteDeadline(time.Time{})
 	c.mu.Unlock()
 	return err

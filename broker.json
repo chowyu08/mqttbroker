@@ -6,6 +6,9 @@
 		"port": "1993",
 		"routers": []
 	},
+	"wsPort": "1888",
+	"wsPath": "/ws",
+	"wsTLS": true,
 	"tlsPort": "8883",
 	"tlsHost": "0.0.0.0",
 	"tlsInfo": {

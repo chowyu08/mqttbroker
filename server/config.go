@@ -17,26 +17,24 @@ const (
 func LoadConfig() (*Info, error) {
 	content, err := ioutil.ReadFile(CONFIGFILE)
 	if err != nil {
-		log.Error("\tserver/config.go: Read config file error: ", err)
+		log.Error("Read config file error: ", err)
 		return nil, err
 	}
 	var info Info
 	err = json.Unmarshal(content, &info)
 	if err != nil {
-		log.Error("\tserver/config.go: Unmarshal config file error: ", err)
+		log.Error("Unmarshal config file error: ", err)
 		return nil, err
 	}
 
 	if info.TlsPort != "" {
 		if info.TlsInfo.CertFile == "" || info.TlsInfo.KeyFile == "" {
-			log.Error("\tserver/config.go: tls config error, no cert or key file.")
+			log.Error("tls config error, no cert or key file.")
 			return nil, err
 		}
-
 		if info.TlsHost == "" {
 			info.TlsHost = "0.0.0.0"
 		}
-
 	}
 
 	if info.Port != "" {
@@ -50,7 +48,6 @@ func LoadConfig() (*Info, error) {
 			info.Cluster.Host = "0.0.0.0"
 		}
 	}
-
 	return &info, nil
 }
 

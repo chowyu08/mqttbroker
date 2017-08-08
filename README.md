@@ -22,6 +22,9 @@ $ go run main.go
 		"port": "1993",
 		"routers": ["192.168.10.11:1993","192.168.10.12:1993"]
 	},
+	"wsPort": "1888",
+	"wsPath": "/ws",
+	"wsTLS": true,
 	"tlsPort": "8883",
 	"tlsHost": "0.0.0.0",
 	"tlsInfo": {
@@ -38,6 +41,8 @@ $ go run main.go
 ### Features and Future
 
 * Supports QOS 0 1 and 2 
+
+* Websocket Support
 
 * TLS/SSL Support
 
