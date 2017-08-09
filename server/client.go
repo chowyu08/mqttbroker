@@ -366,13 +366,12 @@ func (c *client) ProcessSubscribe(buf []byte) {
 	for i, t := range topics {
 		topic := string(t)
 		//check topic auth for client
-		if typ == CLIENT && srv.info.Acl {
-			if !c.CheckTopicAuth(topic, SUB) {
-				log.Error("CheckSubAuth failed")
-				retcodes = append(retcodes, message.QosFailure)
-				continue
-			}
+		if !c.CheckTopicAuth(topic, SUB) {
+			log.Error("CheckSubAuth failed")
+			retcodes = append(retcodes, message.QosFailure)
+			continue
 		}
+
 		if _, exist := c.subs[topic]; !exist {
 			queue := false
 			if strings.HasPrefix(topic, "$queue/") {
@@ -521,11 +520,10 @@ func (c *client) ProcessPublish(msg []byte) {
 	}
 	//check topic auth
 	topic := string(pubMsg.Topic())
-	if typ == CLIENT && srv.info.Acl {
-		if !c.CheckTopicAuth(topic, PUB) {
-			log.Error("CheckPubAuth failed")
-			return
-		}
+
+	if !c.CheckTopicAuth(topic, PUB) {
+		log.Error("CheckPubAuth failed")
+		return
 	}
 
 	if pubMsg.Retain() {
