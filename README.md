@@ -81,14 +81,14 @@ Allow | type | value | pubsub | Topics
 ~~~
 ## type clientid , username, ipaddr
 ##pub 1 ,  sub 2,  pubsub 3
-## %c is clientid , %u is username
+## %c is clientid , %u is username , %# is topic '#', # is all topic
 allow      ip          127.0.0.1   2     $SYS/#
 allow      clientid    0001        3     #
-allow      username    admin       3     #
+deny       username    test        3     #
 allow      username    joy         3     /test,hello/world 
 allow      clientid    *           1     toCloud/%c
 allow      username    *           1     toCloud/%u
-deny       clientid    *           3     #
+deny       clientid    *           3     %#
 ~~~
 
 ~~~
@@ -96,9 +96,12 @@ deny       clientid    *           3     #
 allow      ip          127.0.0.1   2    $SYS/#
 ~~~
 ~~~
-#allow client who's id with 0001 or username with admin pub sub all topic
+#allow clientwith id '0001' pub sub all topic
 allow      clientid    0001        3        #
-allow      username    admin       3        #
+~~~
+~~~
+#deny user admin pub sub all topic
+deny      username    test       3        #
 ~~~
 ~~~
 #allow client with the username joy can pub sub topic '/test' and 'hello/world'
@@ -108,6 +111,10 @@ allow      username    joy         3     /test,hello/world
 #allow all client pub the topic toCloud/{clientid/username}
 allow      clientid    *         1         toCloud/%c
 allow      username    *         1         toCloud/%u
+~~~
+~~~
+#deny all client pub sub the topic '#'
+deny       clientid    *         3           %#
 ~~~
 ~~~
 #deny all client pub sub all topic

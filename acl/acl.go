@@ -95,6 +95,7 @@ func (c *ACLConfig) Prase() error {
 			Topics: topics,
 			PubSub: pubsub,
 		}
+		// fmt.Println(tmpAuth)
 		c.Info = append(c.Info, tmpAuth)
 		if err != nil {
 			if err != io.EOF {
