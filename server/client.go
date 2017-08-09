@@ -8,8 +8,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
-
 	log "github.com/cihub/seelog"
 	"github.com/surgemq/message"
 )
@@ -22,7 +20,7 @@ const (
 const (
 	startBufSize = 512
 	// special pub topic for cluster info BrokerInfoTopic
-	BrokerInfoTopic = "broker001info/brokerinfo"
+	BrokerInfoTopic = "broker00100info/brokerinfo"
 	// DEFAULT_FLUSH_DEADLINE is the write/flush deadlines.
 
 	DEFAULT_FLUSH_DEADLINE = 2 * time.Second
@@ -39,8 +37,6 @@ type client struct {
 	typ         int
 	srv         *Server
 	nc          net.Conn
-	wsConn      *websocket.Conn
-	isWs        bool
 	mu          sync.Mutex
 	clientID    string
 	username    string
@@ -54,6 +50,8 @@ type client struct {
 	packets     map[string][]byte
 	route       *Route
 	closeCh     chan bool
+	// wsConn      *websocket.Conn
+	// isWs        bool
 }
 
 type Route struct {
@@ -121,13 +119,9 @@ func (c *client) initClient() {
 	}
 	c.subs = make(map[string]*subscription)
 	c.packets = make(map[string][]byte)
-	if c.isWs {
-		c.localIP = strings.Split(c.wsConn.LocalAddr().String(), ":")[0]
-		c.remoteIP = strings.Split(c.wsConn.RemoteAddr().String(), ":")[0]
-	} else {
-		c.localIP = strings.Split(c.nc.LocalAddr().String(), ":")[0]
-		c.remoteIP = strings.Split(c.nc.RemoteAddr().String(), ":")[0]
-	}
+
+	c.localIP = strings.Split(c.nc.LocalAddr().String(), ":")[0]
+	c.remoteIP = strings.Split(c.nc.RemoteAddr().String(), ":")[0]
 
 }
 
@@ -186,24 +180,20 @@ func (c *client) Close() {
 
 	c.mu.Lock()
 	nc := c.nc
-	ws := c.wsConn
 	srv := c.srv
 	username := c.username
 	clientID := c.clientID
 	willMsg := c.willMsg
 
 	c.mu.Unlock()
-	if nc == nil && ws == nil {
+	if nc == nil {
 		return
 	}
 	if nc != nil {
 		nc.Close()
 		nc = nil
 	}
-	if ws != nil {
-		ws.Close()
-		ws = nil
-	}
+
 	// log.Info("client closed with cid: ", c.clientID)
 	if srv != nil {
 		srv.removeClient(c)
@@ -703,22 +693,22 @@ func (c *client) ProcessPubComp(msg []byte) {
 func (c *client) writeBuffer(buf []byte) error {
 	var err error
 	c.mu.Lock()
-	if !c.isWs {
-		nc := c.nc
-		if nc == nil {
-			c.mu.Unlock()
-			return errors.New("conn is nul")
-		}
-		// nc.SetWriteDeadline(time.Now().Add(DEFAULT_WRITE_TIMEOUT))
-		_, err = nc.Write(buf)
-	} else {
-		ws := c.wsConn
-		if ws == nil {
-			c.mu.Unlock()
-			return errors.New("ws conn is nul")
-		}
-		err = ws.WriteMessage(websocket.BinaryMessage, buf)
+	// if !c.isWs {
+	nc := c.nc
+	if nc == nil {
+		c.mu.Unlock()
+		return errors.New("conn is nul")
 	}
+	// nc.SetWriteDeadline(time.Now().Add(DEFAULT_WRITE_TIMEOUT))
+	_, err = nc.Write(buf)
+	// } else {
+	// 	ws := c.wsConn
+	// 	if ws == nil {
+	// 		c.mu.Unlock()
+	// 		return errors.New("ws conn is nul")
+	// 	}
+	// 	err = ws.WriteMessage(websocket.BinaryMessage, buf)
+	// }
 
 	// nc.SetWriteDeadline(time.Time{})
 	c.mu.Unlock()

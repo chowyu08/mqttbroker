@@ -228,7 +228,7 @@ func (s *Server) AcceptClientsLoop(tlsRequire bool) {
 }
 
 func (s *Server) createClient(conn net.Conn, tlsRequire bool) *client {
-	c := &client{srv: s, nc: conn, typ: CLIENT, tlsRequired: tlsRequire, isWs: false}
+	c := &client{srv: s, nc: conn, typ: CLIENT, tlsRequired: tlsRequire}
 	c.initClient()
 
 	s.mu.Lock()
@@ -315,7 +315,7 @@ func (s *Server) AcceptRoutersLoop() {
 }
 
 func (s *Server) createRoute(conn net.Conn) *client {
-	c := &client{srv: s, nc: conn, typ: ROUTER, isWs: false}
+	c := &client{srv: s, nc: conn, typ: ROUTER}
 	c.initClient()
 
 	s.mu.Lock()
@@ -331,7 +331,7 @@ func (s *Server) createRoute(conn net.Conn) *client {
 }
 
 func (s *Server) createRemote(conn net.Conn, route *Route) *client {
-	c := &client{srv: s, nc: conn, typ: REMOTE, route: route, isWs: false}
+	c := &client{srv: s, nc: conn, typ: REMOTE, route: route}
 
 	c.initClient()
 
