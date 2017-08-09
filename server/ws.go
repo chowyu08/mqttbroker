@@ -1,7 +1,6 @@
 package server
 
 import (
-	"io"
 	"net/http"
 
 	"golang.org/x/net/websocket"
@@ -23,9 +22,9 @@ func (s *Server) AcceptWSLoop() {
 
 }
 func (s *Server) HandleWS(conn *websocket.Conn) {
-	io.Copy(conn, conn)
+	// io.Copy(conn, conn)
 	s.startGoRoutine(func() {
-		s.createClient(conn, s.info.WsTLS)
+		s.createClient(conn, false)
 	})
 }
 
