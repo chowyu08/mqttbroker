@@ -54,6 +54,9 @@ func (c *client) ProcessInfo(msg *message.PublishMessage) {
 			remoteID:  rid,
 		}
 		c.route = route
+		if c.typ == ROUTER {
+			s.addClient(c)
+		}
 		s.startGoRoutine(func() {
 			s.SendLocalSubsToRouter(c)
 		})

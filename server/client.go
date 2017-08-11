@@ -1,11 +1,9 @@
 package server
 
 import (
-	"errors"
 	"net"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -35,7 +33,7 @@ const (
 )
 
 type client struct {
-	cid         uint64
+	// cid         uint64
 	typ         int
 	srv         *Server
 	nc          net.Conn
@@ -45,15 +43,18 @@ type client struct {
 	clientID    string
 	username    string
 	password    string
-	keeplive    uint16
+	keepAlive   uint16
 	localIP     string
 	remoteIP    string
 	tlsRequired bool
+	smu         sync.RWMutex
 	subs        map[string]*subscription
 	willMsg     *message.PublishMessage
+	pmu         sync.RWMutex
 	packets     map[string][]byte
 	route       *Route
 	closeCh     chan bool
+	// bufCh       chan []byte
 }
 
 type Route struct {
@@ -97,8 +98,7 @@ func (c *client) StartPing() {
 
 func (c *client) SendConnect() {
 
-	clientID := GenUniqueId()
-	c.clientID = clientID
+	clientID := c.clientID
 	connMsg := message.NewConnectMessage()
 	connMsg.SetClientId([]byte(clientID))
 	connMsg.SetVersion(0x04)
@@ -111,16 +111,10 @@ func (c *client) SendConnect() {
 }
 
 func (c *client) initClient() {
-	s := c.srv
-	if c.typ == CLIENT {
-		c.cid = atomic.AddUint64(&s.gcid, 1)
-	} else if c.typ == ROUTER {
-		c.cid = atomic.AddUint64(&s.grid, 1)
-	} else {
-		c.cid = atomic.AddUint64(&s.gmid, 1)
-	}
+
 	c.subs = make(map[string]*subscription)
 	c.packets = make(map[string][]byte)
+	// c.bufCh = make(chan []byte, 200)
 	if c.isWs {
 		c.localIP = strings.Split(c.wsConn.LocalAddr().String(), ":")[0]
 		c.remoteIP = strings.Split(c.wsConn.RemoteAddr().String(), ":")[0]
@@ -128,103 +122,108 @@ func (c *client) initClient() {
 		c.localIP = strings.Split(c.nc.LocalAddr().String(), ":")[0]
 		c.remoteIP = strings.Split(c.nc.RemoteAddr().String(), ":")[0]
 	}
-
 }
 
 func (c *client) readLoop() {
 	nc := c.nc
-	keeplive := c.keeplive
-
+	keeplive := c.keepAlive
+	// cid := c.clientID
 	if nc == nil {
 		return
 	}
+	// go c.ProcessMessage()
 	first := true
 	lastIn := uint16(time.Now().Unix())
 	for {
-		select {
-		case <-c.closeCh:
-			c = nil
+		nowTime := uint16(time.Now().Unix())
+		if 0 != keeplive && nowTime-lastIn > keeplive*3/2 {
+			log.Error("Client has exceeded timeout, disconnecting.")
+			c.Close()
 			return
-		default:
-			nowTime := uint16(time.Now().Unix())
-			if 0 != keeplive && nowTime-lastIn > keeplive*3/2 {
-				log.Error("Client has exceeded timeout, disconnecting.")
-				c.Close()
-				return
-			}
+		}
 
-			buf, err := c.ReadPacket()
-			if err != nil {
-				if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
-					// log.Error("read timeout")
-					continue
-				}
-				log.Error("read buf err: ", err)
-				c.Close()
-				return
+		buf, err := c.ReadPacket()
+		if err != nil {
+			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+				continue
 			}
-			lastIn = uint16(time.Now().Unix())
-			if first {
-				if c.typ == CLIENT {
-					c.ProcessConnect(buf)
-					first = false
-					continue
-				}
-			}
-			c.parse(buf)
-
-			nc := c.nc
-
-			if nc == nil {
-				return
+			log.Errorf("read buf err: %s", err.Error())
+			c.Close()
+			return
+		}
+		lastIn = uint16(time.Now().Unix())
+		if first {
+			if c.typ == CLIENT {
+				c.ProcessConnect(buf)
+				first = false
+				continue
 			}
 		}
+		c.parse(buf)
+		// c.bufCh <- buf
+
+		nc = c.nc
+		if nc == nil {
+			return
+		}
+
 	}
 }
 
+// func (c *client) ProcessMessage() {
+// 	var buf []byte
+// 	leakyBucket := make(chan int, 20000)
+// 	for {
+// 		select {
+// 		case <-c.closeCh:
+// 			close(leakyBucket)
+// 			return
+// 		case buf = <-c.bufCh:
+// 			leakyBucket <- 1
+// 			c.parse(buf)
+// 			<-leakyBucket
+// 		}
+// 	}
+// }
+
 func (c *client) Close() {
 
-	c.mu.Lock()
 	nc := c.nc
 	ws := c.wsConn
 	srv := c.srv
 	username := c.username
 	clientID := c.clientID
 	willMsg := c.willMsg
-
-	c.mu.Unlock()
-	if nc == nil && ws == nil {
-		return
-	}
-	if nc != nil {
-		nc.Close()
-		nc = nil
-	}
-	if ws != nil {
-		ws.Close()
-		ws = nil
-	}
 	// log.Info("client closed with cid: ", c.clientID)
 	if srv != nil {
 		srv.removeClient(c)
-		for _, sub := range c.subs {
-			// log.Info("remove Sub")
-			err := srv.sl.Remove(sub)
-			if err != nil {
-				log.Error("closed client but remove sublist error, ", err)
+		srv.startGoRoutine(func() {
+			for _, sub := range c.subs {
+				// log.Info("remove Sub")
+				err := srv.sl.Remove(sub)
+				if err != nil {
+					log.Error("closed client but remove sublist error, ", err)
+				}
+				if c.typ == CLIENT {
+					srv.BroadcastUnSubscribe(sub)
+				}
 			}
-			if c.typ == CLIENT {
-				srv.BroadcastUnSubscribe(sub)
+			if willMsg != nil {
+				srv.PublishMessage(willMsg)
 			}
-		}
-		if willMsg != nil {
-			srv.PublishMessage(willMsg)
-		}
+		})
+
 		if c.typ == CLIENT {
 			srv.startGoRoutine(func() {
 				srv.PublishOnDisconnectedMessage(username, clientID)
 			})
 		}
+	}
+	if nc != nil {
+		nc.Close()
+	}
+	if ws != nil {
+		ws.Close()
 	}
 	c.closeCh <- true
 }
@@ -261,10 +260,8 @@ func (c *client) ProcessConnAck(buf []byte) {
 }
 
 func (c *client) ProcessConnect(msg []byte) {
-
 	srv := c.srv
 	typ := c.typ
-
 	if srv == nil {
 		return
 	}
@@ -282,7 +279,6 @@ func (c *client) ProcessConnect(msg []byte) {
 	}
 
 	connack := message.NewConnackMessage()
-	var keeplive uint16
 	if version := connMsg.Version(); version != 0x04 && version != 0x03 {
 		connack.SetReturnCode(message.ErrInvalidProtocolVersion)
 		goto connback
@@ -291,14 +287,13 @@ func (c *client) ProcessConnect(msg []byte) {
 	c.username = string(connMsg.Username())
 	c.password = string(connMsg.Password())
 
-	keeplive = connMsg.KeepAlive()
-	if keeplive < 10 {
-		c.keeplive = 60
-	} else {
-		c.keeplive = keeplive
-	}
+	c.keepAlive = connMsg.KeepAlive()
 
 	c.clientID = string(connMsg.ClientId())
+
+	if typ == CLIENT {
+		srv.addClient(c)
+	}
 
 	if connMsg.WillFlag() {
 		msg := message.NewPublishMessage()
@@ -311,14 +306,6 @@ func (c *client) ProcessConnect(msg []byte) {
 	} else {
 		c.willMsg = nil
 	}
-
-	srv.mu.Lock()
-	if typ == CLIENT {
-		srv.clients[c.cid] = c
-	} else if typ == ROUTER {
-		srv.routers[c.cid] = c
-	}
-	srv.mu.Unlock()
 
 	srv.startGoRoutine(func() {
 		ip := c.remoteIP
@@ -371,18 +358,20 @@ func (c *client) ProcessSubscribe(buf []byte) {
 			retcodes = append(retcodes, message.QosFailure)
 			continue
 		}
-
-		if _, exist := c.subs[topic]; !exist {
+		c.smu.RLock()
+		_, exist := c.subs[topic]
+		c.smu.RUnlock()
+		if !exist {
 			queue := false
 			if strings.HasPrefix(topic, "$queue/") {
 				if len(t) > 7 {
 					t = t[7:]
 					queue = true
-					srv.mu.Lock()
+					srv.qmu.Lock()
 					if _, exists := srv.queues[topic]; !exists {
 						srv.queues[topic] = 0
 					}
-					srv.mu.Unlock()
+					srv.qmu.Unlock()
 				} else {
 					retcodes = append(retcodes, message.QosFailure)
 					continue
@@ -395,9 +384,9 @@ func (c *client) ProcessSubscribe(buf []byte) {
 				queue:  queue,
 			}
 
-			c.mu.Lock()
+			c.smu.Lock()
 			c.subs[topic] = sub
-			c.mu.Unlock()
+			c.smu.Unlock()
 
 			err := srv.sl.Insert(sub)
 			if err != nil {
@@ -420,15 +409,14 @@ func (c *client) ProcessSubscribe(buf []byte) {
 		}
 		return
 	}
+	err1 := c.writeMessage(suback)
+	if err1 != nil {
+		log.Error("send suback error, ", err1)
+	}
 	if typ == CLIENT {
 		srv.startGoRoutine(func() {
 			srv.BroadcastSubscribeMessage(buf)
 		})
-	}
-
-	err1 := c.writeMessage(suback)
-	if err1 != nil {
-		log.Error("send suback error, ", err1)
 	}
 	for _, t := range topics {
 		srv.startGoRoutine(func() {
@@ -470,10 +458,6 @@ func (c *client) ProcessUnSubscribe(msg []byte) {
 		}
 
 	}
-	if typ == CLIENT {
-		c.srv.BroadcastUnSubscribeMessage(msg)
-	}
-
 	resp := message.NewUnsubackMessage()
 	resp.SetPacketId(unsub.PacketId())
 
@@ -481,22 +465,34 @@ func (c *client) ProcessUnSubscribe(msg []byte) {
 	if err1 != nil {
 		log.Error("send ubsuback error, ", err1)
 	}
+	if typ == CLIENT {
+		c.srv.BroadcastUnSubscribeMessage(msg)
+	}
 }
 
 func (c *client) unsubscribe(sub *subscription) {
 
-	c.mu.Lock()
+	c.smu.Lock()
 	delete(c.subs, string(sub.topic))
-	c.mu.Unlock()
+	c.smu.Unlock()
 
 	if c.srv != nil {
 		c.srv.sl.Remove(sub)
 	}
 }
 
-func (c *client) ProcessPing() {
+func (c *client) ProcessPing(buf []byte) {
+	pingReqMsg := message.NewPingreqMessage()
+	_, err := pingReqMsg.Decode(buf)
+	if err != nil {
+		log.Error("\tserver/client.go: Decode PingRequest Message error: ", err)
+		if c.typ == CLIENT {
+			c.Close()
+		}
+		return
+	}
 	respMsg := message.NewPingrespMessage()
-	err := c.writeMessage(respMsg)
+	err = c.writeMessage(respMsg)
 	if err != nil {
 		log.Error("send pingresp error, ", err)
 	}
@@ -525,23 +521,13 @@ func (c *client) ProcessPublish(msg []byte) {
 		log.Error("CheckPubAuth failed")
 		return
 	}
-
-	if pubMsg.Retain() {
-		srv.startGoRoutine(func() {
-			err := srv.rl.Insert(pubMsg.Topic(), msg)
-			if err != nil {
-				log.Error("Insert Retain Message error: ", err)
-			}
-		})
-	}
 	//process normal publish message
 	// c.ProcessPublishMessage(msg, topic)
 	switch pubMsg.QoS() {
 	case message.QosExactlyOnce:
-		c.mu.Lock()
 		key := incoming + string(pubMsg.PacketId())
+
 		c.packets[key] = msg
-		c.mu.Unlock()
 
 		resp := message.NewPubrecMessage()
 		resp.SetPacketId(pubMsg.PacketId())
@@ -561,6 +547,15 @@ func (c *client) ProcessPublish(msg []byte) {
 
 	case message.QosAtMostOnce:
 		c.ProcessPublishMessage(msg, pubMsg)
+	}
+	// process retain message
+	if pubMsg.Retain() {
+		srv.startGoRoutine(func() {
+			err := srv.rl.Insert(pubMsg.Topic(), msg)
+			if err != nil {
+				log.Error("Insert Retain Message error: ", err)
+			}
+		})
 	}
 }
 
@@ -593,14 +588,12 @@ func (c *client) ProcessPublishMessage(buf []byte, msg *message.PublishMessage) 
 			}
 		}
 
-		s.startGoRoutine(func() {
-			if sub != nil {
-				err := sub.client.writeBuffer(buf)
-				if err != nil {
-					log.Error("process message for psub error,  ", err)
-				}
+		if sub != nil {
+			err := sub.client.writeBuffer(buf)
+			if err != nil {
+				log.Error("process message for psub error,  ", err)
 			}
-		})
+		}
 
 	}
 
@@ -610,19 +603,24 @@ func (c *client) ProcessPublishMessage(buf []byte, msg *message.PublishMessage) 
 				continue
 			}
 		}
-		s.mu.Lock()
-		if cnt, exist := s.queues[string(sub.topic)]; exist && i == cnt {
+		s.qmu.Lock()
+		cnt, exist := s.queues[string(sub.topic)]
+		s.qmu.RUnlock()
+		if exist && i == cnt {
 			if sub != nil {
 				err := sub.client.writeBuffer(buf)
 				if err != nil {
 					log.Error("process will message for qsub error,  ", err)
 				}
 			}
+			s.qmu.Lock()
 			s.queues[topic] = (s.queues[topic] + 1) % len(r.qsubs)
+			s.qmu.Unlock()
 			break
 		}
-		s.mu.Unlock()
+
 	}
+
 }
 
 func (c *client) ProcessPubREL(msg []byte) {
@@ -632,20 +630,24 @@ func (c *client) ProcessPubREL(msg []byte) {
 		log.Error("Decode Pubrel Message error: ", err)
 		return
 	}
-	c.mu.Lock()
+
 	var buf []byte
 	exist := false
 	key := incoming + string(pubrel.PacketId())
-	if buf, exist = c.packets[key]; !exist {
+
+	buf, exist = c.packets[key]
+
+	if !exist {
 		log.Error("search qos 2 Message error ")
+
 		return
 	}
 
 	resp := message.NewPubcompMessage()
 	resp.SetPacketId(pubrel.PacketId())
 	c.writeMessage(resp)
+
 	delete(c.packets, key)
-	c.mu.Unlock()
 
 	pubmsg := message.NewPublishMessage()
 	pubmsg.Decode(buf)
@@ -661,9 +663,7 @@ func (c *client) ProcessPubREC(msg []byte) {
 		log.Error("Decode Pubrec Message error: ", err)
 		return
 	}
-	c.mu.Lock()
 	c.packets[outgoing+string(pubRec.PacketId())] = msg
-	c.mu.Unlock()
 
 	resp := message.NewPubrelMessage()
 	resp.SetPacketId(pubRec.PacketId())
@@ -679,9 +679,7 @@ func (c *client) ProcessPubAck(msg []byte) {
 	}
 	key := outgoing + string(puback.PacketId())
 
-	c.mu.Lock()
 	delete(c.packets, key)
-	c.mu.Unlock()
 }
 
 func (c *client) ProcessPubComp(msg []byte) {
@@ -693,9 +691,7 @@ func (c *client) ProcessPubComp(msg []byte) {
 	}
 	key := outgoing + string(pubcomp.PacketId())
 
-	c.mu.Lock()
 	delete(c.packets, key)
-	c.mu.Unlock()
 }
 
 func (c *client) writeBuffer(buf []byte) error {
@@ -703,18 +699,9 @@ func (c *client) writeBuffer(buf []byte) error {
 	c.mu.Lock()
 	if !c.isWs {
 		nc := c.nc
-		if nc == nil {
-			c.mu.Unlock()
-			return errors.New("conn is nul")
-		}
-		// nc.SetWriteDeadline(time.Now().Add(DEFAULT_WRITE_TIMEOUT))
 		_, err = nc.Write(buf)
 	} else {
 		ws := c.wsConn
-		if ws == nil {
-			c.mu.Unlock()
-			return errors.New("ws conn is nul")
-		}
 		err = ws.WriteMessage(websocket.BinaryMessage, buf)
 	}
 

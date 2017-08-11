@@ -46,18 +46,18 @@ func (c *client) parse(buf []byte) {
 	case PUBACK:
 		//log.Info("Recv publish  ack message..........")
 		c.ProcessPubAck(buf)
-	case PUBCOMP:
-		//log.Info("Recv publish  ack message..........")
-		c.ProcessPubComp(buf)
 	case PUBREC:
 		//log.Info("Recv publish rec message..........")
 		c.ProcessPubREC(buf)
 	case PUBREL:
 		//log.Info("Recv publish rel message..........")
 		c.ProcessPubREL(buf)
+	case PUBCOMP:
+		//log.Info("Recv publish  ack message..........")
+		c.ProcessPubComp(buf)
 	case SUBSCRIBE:
 		// log.Info("Recv subscribe message.....")
-		c.ProcessSubscribe(buf)
+		c.ProcessSubscribe(buf) //
 	case SUBACK:
 		// log.Info("Recv suback message.....")
 	case UNSUBSCRIBE:
@@ -66,26 +66,31 @@ func (c *client) parse(buf []byte) {
 	case UNSUBACK:
 		//log.Info("Recv unsuback message.....")
 	case PINGREQ:
-		//log.Info("Recv PINGREQ message..........")
-		c.ProcessPing()
+		// log.Info("Recv PINGREQ message..........")
+		c.ProcessPing(buf)
 	case PINGRESP:
 		//log.Info("Recv PINGRESP message..........")
 	case DISCONNECT:
-		log.Info("Recv DISCONNECT message.......")
-		// c.Close()
+		// log.Info("Recv DISCONNECT message.......")
+		c.Close()
 	default:
 		log.Info("Recv Unknow message.......")
 	}
 }
 
 func (c *client) Read(b []byte) (int, error) {
-	if c.nc == nil {
+	conn := c.nc
+	if conn == nil {
 		return 0, fmt.Errorf("conn is nil")
 	}
-	if err := c.nc.SetReadDeadline(time.Now().Add(DEFAULT_READ_TIMEOUT)); err != nil {
+	conn, ok := conn.(net.Conn)
+	if !ok {
+		return 0, fmt.Errorf("conn type is nil")
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(DEFAULT_READ_TIMEOUT)); err != nil {
 		return 0, err
 	}
-	return c.nc.Read(b)
+	return conn.Read(b)
 }
 
 func (c *client) ReadPacket() ([]byte, error) {
@@ -154,6 +159,7 @@ func getMessageBuffer(c io.Closer) ([]byte, error) {
 		if l > 5 {
 			return nil, fmt.Errorf("4th byte of remaining length has continuation bit set")
 		}
+		conn.SetReadDeadline(time.Now().Add(time.Second * 5))
 		n, err := conn.Read(b[0:])
 		if err != nil {
 			return nil, err
@@ -171,7 +177,7 @@ func getMessageBuffer(c io.Closer) ([]byte, error) {
 	buf = append(buf, make([]byte, remlen)...)
 
 	for l < len(buf) {
-		// conn.SetReadDeadline(time.Now().Add(time.Second * 5))
+		conn.SetReadDeadline(time.Now().Add(time.Second * 5))
 		n, err := conn.Read(buf[l:])
 		if err != nil {
 			return nil, err

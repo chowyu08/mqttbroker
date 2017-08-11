@@ -18,9 +18,9 @@ import (
 
 const (
 	// ACCEPT_MIN_SLEEP is the minimum acceptable sleep times on temporary errors.
-	ACCEPT_MIN_SLEEP = 100 * time.Millisecond
+	ACCEPT_MIN_SLEEP = 10 * time.Millisecond
 	// ACCEPT_MAX_SLEEP is the maximum acceptable sleep times on temporary errors
-	ACCEPT_MAX_SLEEP = 10 * time.Second
+	ACCEPT_MAX_SLEEP = 1 * time.Second
 	// DEFAULT_ROUTE_CONNECT Route solicitation intervals.
 	DEFAULT_ROUTE_CONNECT = 5 * time.Second
 	// DEFAULT_TLS_TIMEOUT
@@ -57,20 +57,18 @@ type ClusterInfo struct {
 type Server struct {
 	ID            string
 	info          *Info
-	running       bool
 	mu            sync.Mutex
-	gmu           sync.Mutex
+	cmu           sync.RWMutex // for server.clients
+	rmu           sync.RWMutex // for server.routers and remotes
 	listener      net.Listener
 	routeListener net.Listener
 	TLSConfig     *tls.Config
 	AclConfig     *acl.ACLConfig
-	clients       map[uint64]*client
-	routers       map[uint64]*client
-	remotes       map[uint64]*client
+	clients       map[string]*client
+	routers       map[string]*client
+	remotes       map[string]*client
+	qmu           sync.RWMutex // for server.routers and remoteq
 	queues        map[string]int
-	gcid          uint64
-	grid          uint64
-	gmid          uint64
 	sl            *Sublist
 	rl            *RetainList
 }
@@ -79,12 +77,13 @@ func New(info *Info) (*Server, error) {
 	server := &Server{
 		ID:      GenUniqueId(),
 		info:    info,
-		clients: make(map[uint64]*client),
-		routers: make(map[uint64]*client),
-		remotes: make(map[uint64]*client),
+		clients: make(map[string]*client),
+		routers: make(map[string]*client),
+		remotes: make(map[string]*client),
 		queues:  make(map[string]int),
 		sl:      NewSublist(),
 		rl:      NewRetainList(),
+		// leakyBucket: make(chan int, 30000),
 	}
 	if server.info.TlsPort != "" {
 		tlsconfig, err := NewTLSConfig(server.info.TlsInfo)
@@ -107,9 +106,6 @@ func New(info *Info) (*Server, error) {
 }
 
 func (s *Server) Start() {
-	s.mu.Lock()
-	s.running = true
-	s.mu.Unlock()
 
 	if s.info.Port != "" {
 		s.startGoRoutine(func() {
@@ -166,7 +162,7 @@ func (s *Server) ConnectToRouters() {
 }
 
 func (s *Server) connectRouter(url, remoteID string) {
-	for s.running {
+	for {
 		conn, err := net.Dial("tcp", url)
 		if err != nil {
 			log.Error("Error trying to connect to route: ", err)
@@ -203,7 +199,7 @@ func (s *Server) AcceptClientsLoop(tlsRequire bool) {
 		return
 	}
 
-	tmpDelay := 10 * ACCEPT_MIN_SLEEP
+	tmpDelay := 2 * ACCEPT_MIN_SLEEP
 	for {
 		conn, err := l.Accept()
 		if err != nil {
@@ -227,16 +223,9 @@ func (s *Server) AcceptClientsLoop(tlsRequire bool) {
 	}
 }
 
-func (s *Server) createClient(conn net.Conn, tlsRequire bool) *client {
+func (s *Server) createClient(conn net.Conn, tlsRequire bool) {
 	c := &client{srv: s, nc: conn, typ: CLIENT, tlsRequired: tlsRequire, isWs: false}
 	c.initClient()
-
-	s.mu.Lock()
-	if !s.running {
-		s.mu.Unlock()
-		return c
-	}
-	s.mu.Unlock()
 
 	// Re-Grab lock
 	c.mu.Lock()
@@ -254,7 +243,7 @@ func (s *Server) createClient(conn net.Conn, tlsRequire bool) *client {
 		c.mu.Unlock()
 		if err := conn.Handshake(); err != nil {
 			log.Error("TLS handshake error, ", err)
-			return nil
+			return
 		}
 		conn.SetReadDeadline(time.Time{})
 		c.mu.Lock()
@@ -263,8 +252,9 @@ func (s *Server) createClient(conn net.Conn, tlsRequire bool) *client {
 	// The connection may have been closed
 	if c.nc == nil {
 		c.mu.Unlock()
-		return c
+		return
 	}
+	c.mu.Unlock()
 
 	s.startGoRoutine(func() { c.readLoop() })
 
@@ -273,9 +263,6 @@ func (s *Server) createClient(conn net.Conn, tlsRequire bool) *client {
 	// 	cs := c.nc.(*tls.Conn).ConnectionState()
 	// 	// log.Debugf("TLS version %s, cipher suite %s", tlsVersion(cs.Version), tlsCipher(cs.CipherSuite))
 	// }
-
-	c.mu.Unlock()
-	return c
 
 }
 
@@ -290,7 +277,7 @@ func (s *Server) AcceptRoutersLoop() {
 		return
 	}
 
-	tmpDelay := 10 * ACCEPT_MIN_SLEEP
+	tmpDelay := 2 * ACCEPT_MIN_SLEEP
 	for {
 		conn, err := l.Accept()
 		if err != nil {
@@ -314,37 +301,19 @@ func (s *Server) AcceptRoutersLoop() {
 	}
 }
 
-func (s *Server) createRoute(conn net.Conn) *client {
+func (s *Server) createRoute(conn net.Conn) {
 	c := &client{srv: s, nc: conn, typ: ROUTER, isWs: false}
 	c.initClient()
 
-	s.mu.Lock()
-	if !s.running {
-		s.mu.Unlock()
-		return c
-	}
-	s.mu.Unlock()
-
 	s.startGoRoutine(func() { c.readLoop() })
-
-	return c
 }
 
-func (s *Server) createRemote(conn net.Conn, route *Route) *client {
-	c := &client{srv: s, nc: conn, typ: REMOTE, route: route, isWs: false}
+func (s *Server) createRemote(conn net.Conn, route *Route) {
+	c := &client{srv: s, nc: conn, typ: REMOTE, route: route, isWs: false, clientID: GenUniqueId()}
 
 	c.initClient()
 
-	s.mu.Lock()
-
-	if !s.running {
-		s.mu.Unlock()
-		return c
-	}
-	//save remote info and send local subs
-	s.remotes[c.cid] = c
-
-	s.mu.Unlock()
+	s.addClient(c)
 
 	s.startGoRoutine(func() {
 		c.readLoop()
@@ -356,8 +325,6 @@ func (s *Server) createRemote(conn net.Conn, route *Route) *client {
 	s.startGoRoutine(func() {
 		c.StartPing()
 	})
-
-	return c
 }
 
 func TlsTimeout(c *client, conn *tls.Conn) {
@@ -398,27 +365,74 @@ func (s *Server) ReadLocalBrokerIP() []string {
 }
 
 func (s *Server) startGoRoutine(f func()) {
-	s.gmu.Lock()
-	if s.running {
-		go f()
+	go f()
+}
+func (s *Server) addClient(c *client) {
+	clientId := c.clientID
+	typ := c.typ
+	var old *client
+	var exist bool
+	switch typ {
+	case CLIENT:
+		s.cmu.RLock()
+		old, exist = s.clients[clientId]
+		s.cmu.RUnlock()
+		if exist {
+			log.Errorf("client %s exist , close old client", clientId)
+			old.Close()
+			old = nil
+		}
+		s.cmu.Lock()
+		s.clients[clientId] = c
+		s.cmu.Unlock()
+
+	case ROUTER:
+		s.rmu.RLock()
+		old, exist = s.routers[clientId]
+		s.rmu.RUnlock()
+		if exist {
+			log.Errorf("router %s exist , close old client", clientId)
+			old.Close()
+			old = nil
+		}
+		s.rmu.Lock()
+		s.routers[clientId] = c
+		s.rmu.Unlock()
+	case REMOTE:
+		s.rmu.RLock()
+		old, exist = s.remotes[clientId]
+		s.rmu.RUnlock()
+		if exist {
+			log.Errorf("remote %s exist , close old client", clientId)
+			old.Close()
+			old = nil
+		}
+		s.rmu.Lock()
+		s.remotes[clientId] = c
+		s.rmu.Unlock()
+
 	}
-	s.gmu.Unlock()
 }
 
 func (s *Server) removeClient(c *client) {
-	cid := c.cid
+	clientId := c.clientID
 	typ := c.typ
 
-	s.mu.Lock()
 	switch typ {
 	case CLIENT:
-		delete(s.clients, cid)
+		s.cmu.Lock()
+		delete(s.clients, clientId)
+		s.cmu.Unlock()
 	case ROUTER:
-		delete(s.routers, cid)
+		s.rmu.Lock()
+		delete(s.routers, clientId)
+		s.rmu.Unlock()
 	case REMOTE:
-		delete(s.remotes, cid)
+		s.rmu.Lock()
+		delete(s.remotes, clientId)
+		s.rmu.Unlock()
 	}
-	s.mu.Unlock()
+	// log.Info("delete client ,", clientId)
 }
 
 func GenUniqueId() string {
@@ -433,9 +447,11 @@ func GenUniqueId() string {
 }
 
 func (s *Server) CheckRemoteExist(remoteID, url string) bool {
-	s.mu.Lock()
+	s.rmu.RLock()
 	exist := false
-	for _, v := range s.remotes {
+	remotes := s.remotes
+	s.rmu.RUnlock()
+	for _, v := range remotes {
 		if v.route.remoteUrl == url {
 			// if v.route.remoteID == "" || v.route.remoteID != remoteID {
 			v.route.remoteID = remoteID
@@ -444,15 +460,15 @@ func (s *Server) CheckRemoteExist(remoteID, url string) bool {
 			break
 		}
 	}
-	s.mu.Unlock()
 	return exist
 
 }
 
 func (s *Server) BroadcastInfoMessage(remoteID string, msg message.Message) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, r := range s.remotes {
+	s.rmu.RLock()
+	remotes := s.remotes
+	s.rmu.RUnlock()
+	for _, r := range remotes {
 		if r.route.remoteID == remoteID {
 			continue
 		}
@@ -463,9 +479,10 @@ func (s *Server) BroadcastInfoMessage(remoteID string, msg message.Message) {
 
 func (s *Server) BroadcastSubscribeMessage(buf []byte) {
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, r := range s.remotes {
+	s.rmu.RLock()
+	remotes := s.remotes
+	s.rmu.RUnlock()
+	for _, r := range remotes {
 		r.writeBuffer(buf)
 	}
 	// log.Info("BroadcastSubscribeMessage remotes: ", s.remotes)
@@ -473,9 +490,10 @@ func (s *Server) BroadcastSubscribeMessage(buf []byte) {
 
 func (s *Server) BroadcastUnSubscribeMessage(buf []byte) {
 	// log.Info("remotes: ", s.remotes)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, r := range s.remotes {
+	s.rmu.RLock()
+	remotes := s.remotes
+	s.rmu.RUnlock()
+	for _, r := range remotes {
 		r.writeBuffer(buf)
 	}
 	// log.Info("BroadcastUnSubscribeMessage remotes: ", s.remotes)
@@ -491,27 +509,29 @@ func (s *Server) BroadcastUnSubscribe(sub *subscription) {
 	ubsub := message.NewUnsubscribeMessage()
 	ubsub.AddTopic(topic)
 
-	s.mu.Lock()
-	for _, r := range s.remotes {
+	s.rmu.RLock()
+	remotes := s.remotes
+	s.rmu.RUnlock()
+	for _, r := range remotes {
 		r.writeMessage(ubsub)
 	}
-	s.mu.Unlock()
+
 }
 
 func (s *Server) SendLocalSubsToRouter(c *client) {
-	s.mu.Lock()
-	if len(s.clients) < 1 {
-		s.mu.Unlock()
-		return
-	}
+	s.cmu.RLock()
+	clients := s.clients
+	s.cmu.RUnlock()
+
 	subMsg := message.NewSubscribeMessage()
-	for _, client := range s.clients {
-		client.mu.Lock()
-		subs := make([]*subscription, 0, len(client.subs))
-		for _, sub := range client.subs {
-			subs = append(subs, sub)
-		}
-		client.mu.Unlock()
+	for _, client := range clients {
+		client.smu.RLock()
+		// subs := make([]*subscription, 0, len(client.subs))
+		subs := client.subs
+		client.smu.RUnlock()
+		// for _, sub := range subs {
+		// 	subs = append(subs, sub)
+		// }
 		for _, sub := range subs {
 			var topic []byte
 			if sub.queue {
@@ -521,7 +541,6 @@ func (s *Server) SendLocalSubsToRouter(c *client) {
 			subMsg.AddTopic(topic, sub.qos)
 		}
 	}
-	s.mu.Unlock()
 
 	err := c.writeMessage(subMsg)
 	if err != nil {

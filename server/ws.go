@@ -40,18 +40,14 @@ func (s *Server) HandleWS(w http.ResponseWriter, r *http.Request) {
 func (s *Server) createWsClient(conn *websocket.Conn) *client {
 	c := &client{srv: s, wsConn: conn, typ: CLIENT, tlsRequired: s.info.WsTLS, isWs: true}
 	c.initClient()
-	s.mu.Lock()
-	if !s.running {
-		s.mu.Unlock()
-		return c
-	}
-	s.mu.Unlock()
+
 	s.startGoRoutine(func() { c.wsreadLoop() })
 	return c
 }
+
 func (c *client) wsreadLoop() {
 	ws := c.wsConn
-	keeplive := c.keeplive
+	keeplive := c.keepAlive
 	if ws == nil {
 		return
 	}
