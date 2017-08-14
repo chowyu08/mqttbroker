@@ -59,18 +59,15 @@ type Server struct {
 	info          *Info
 	running       bool
 	mu            sync.Mutex
-	gmu           sync.Mutex
 	listener      net.Listener
 	routeListener net.Listener
 	TLSConfig     *tls.Config
 	AclConfig     *acl.ACLConfig
-	clients       map[uint64]*client
-	routers       map[uint64]*client
-	remotes       map[uint64]*client
+	clients       ClientMap
+	routers       ClientMap
+	remotes       ClientMap
+	qmu           sync.Mutex
 	queues        map[string]int
-	gcid          uint64
-	grid          uint64
-	gmid          uint64
 	sl            *Sublist
 	rl            *RetainList
 }
@@ -79,9 +76,9 @@ func New(info *Info) (*Server, error) {
 	server := &Server{
 		ID:      GenUniqueId(),
 		info:    info,
-		clients: make(map[uint64]*client),
-		routers: make(map[uint64]*client),
-		remotes: make(map[uint64]*client),
+		clients: NewClientMap(),
+		routers: NewClientMap(),
+		remotes: NewClientMap(),
 		queues:  make(map[string]int),
 		sl:      NewSublist(),
 		rl:      NewRetainList(),
@@ -94,7 +91,6 @@ func New(info *Info) (*Server, error) {
 		}
 		server.TLSConfig = tlsconfig
 	}
-
 	if server.info.Acl {
 		aclconfig, err := acl.AclConfigLoad(server.info.AclConf)
 		if err != nil {
@@ -151,7 +147,7 @@ func (s *Server) StaticInfo() {
 		select {
 		case <-timeTicker.C:
 			// log.Info("client Num: ", len(s.clients), " ,router Num: ", len(s.routers), " ,remote Num: ", len(s.remotes))
-			log.Info("client Num: ", len(s.clients))
+			log.Info("client Num: ", s.clients.Count())
 		}
 	}
 }
@@ -334,6 +330,7 @@ func (s *Server) createRemote(conn net.Conn, route *Route) *client {
 	c := &client{srv: s, nc: conn, typ: REMOTE, route: route, isWs: false}
 
 	c.initClient()
+	c.clientID = GenUniqueId()
 
 	s.mu.Lock()
 
@@ -342,7 +339,7 @@ func (s *Server) createRemote(conn net.Conn, route *Route) *client {
 		return c
 	}
 	//save remote info and send local subs
-	s.remotes[c.cid] = c
+	s.remotes.Set(c.clientID, c)
 
 	s.mu.Unlock()
 
@@ -398,27 +395,23 @@ func (s *Server) ReadLocalBrokerIP() []string {
 }
 
 func (s *Server) startGoRoutine(f func()) {
-	s.gmu.Lock()
 	if s.running {
 		go f()
 	}
-	s.gmu.Unlock()
 }
 
 func (s *Server) removeClient(c *client) {
-	cid := c.cid
+	cid := c.clientID
 	typ := c.typ
 
-	s.mu.Lock()
 	switch typ {
 	case CLIENT:
-		delete(s.clients, cid)
+		s.clients.Remove(cid)
 	case ROUTER:
-		delete(s.routers, cid)
+		s.routers.Remove(cid)
 	case REMOTE:
-		delete(s.remotes, cid)
+		s.remotes.Remove(cid)
 	}
-	s.mu.Unlock()
 }
 
 func GenUniqueId() string {
@@ -433,9 +426,9 @@ func GenUniqueId() string {
 }
 
 func (s *Server) CheckRemoteExist(remoteID, url string) bool {
-	s.mu.Lock()
+	remotes := s.remotes.Items()
 	exist := false
-	for _, v := range s.remotes {
+	for _, v := range remotes {
 		if v.route.remoteUrl == url {
 			// if v.route.remoteID == "" || v.route.remoteID != remoteID {
 			v.route.remoteID = remoteID
@@ -444,15 +437,14 @@ func (s *Server) CheckRemoteExist(remoteID, url string) bool {
 			break
 		}
 	}
-	s.mu.Unlock()
+
 	return exist
 
 }
 
 func (s *Server) BroadcastInfoMessage(remoteID string, msg message.Message) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, r := range s.remotes {
+	remotes := s.remotes.Items()
+	for _, r := range remotes {
 		if r.route.remoteID == remoteID {
 			continue
 		}
@@ -463,9 +455,8 @@ func (s *Server) BroadcastInfoMessage(remoteID string, msg message.Message) {
 
 func (s *Server) BroadcastSubscribeMessage(buf []byte) {
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, r := range s.remotes {
+	remotes := s.remotes.Items()
+	for _, r := range remotes {
 		r.writeBuffer(buf)
 	}
 	// log.Info("BroadcastSubscribeMessage remotes: ", s.remotes)
@@ -473,9 +464,8 @@ func (s *Server) BroadcastSubscribeMessage(buf []byte) {
 
 func (s *Server) BroadcastUnSubscribeMessage(buf []byte) {
 	// log.Info("remotes: ", s.remotes)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, r := range s.remotes {
+	remotes := s.remotes.Items()
+	for _, r := range remotes {
 		r.writeBuffer(buf)
 	}
 	// log.Info("BroadcastUnSubscribeMessage remotes: ", s.remotes)
@@ -491,21 +481,17 @@ func (s *Server) BroadcastUnSubscribe(sub *subscription) {
 	ubsub := message.NewUnsubscribeMessage()
 	ubsub.AddTopic(topic)
 
-	s.mu.Lock()
-	for _, r := range s.remotes {
+	remotes := s.remotes.Items()
+	for _, r := range remotes {
 		r.writeMessage(ubsub)
 	}
-	s.mu.Unlock()
 }
 
 func (s *Server) SendLocalSubsToRouter(c *client) {
-	s.mu.Lock()
-	if len(s.clients) < 1 {
-		s.mu.Unlock()
-		return
-	}
+
+	clients := s.clients.Items()
 	subMsg := message.NewSubscribeMessage()
-	for _, client := range s.clients {
+	for _, client := range clients {
 		client.mu.Lock()
 		subs := make([]*subscription, 0, len(client.subs))
 		for _, sub := range client.subs {
@@ -521,7 +507,6 @@ func (s *Server) SendLocalSubsToRouter(c *client) {
 			subMsg.AddTopic(topic, sub.qos)
 		}
 	}
-	s.mu.Unlock()
 
 	err := c.writeMessage(subMsg)
 	if err != nil {

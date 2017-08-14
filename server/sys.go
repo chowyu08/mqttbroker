@@ -58,7 +58,7 @@ func (s *Server) PublishMessage(msg *message.PublishMessage) {
 	}
 
 	for i, sub := range r.qsubs {
-		s.mu.Lock()
+		s.qmu.Lock()
 		if cnt, exist := s.queues[string(sub.topic)]; exist && i == cnt {
 			if sub != nil {
 				err := sub.client.writeMessage(msg)
@@ -69,6 +69,6 @@ func (s *Server) PublishMessage(msg *message.PublishMessage) {
 			s.queues[topic] = (s.queues[topic] + 1) % len(r.qsubs)
 			break
 		}
-		s.mu.Unlock()
+		s.qmu.Unlock()
 	}
 }

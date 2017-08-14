@@ -5,7 +5,6 @@ import (
 	"net"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -35,7 +34,6 @@ const (
 )
 
 type client struct {
-	cid         uint64
 	typ         int
 	srv         *Server
 	nc          net.Conn
@@ -97,8 +95,7 @@ func (c *client) StartPing() {
 
 func (c *client) SendConnect() {
 
-	clientID := GenUniqueId()
-	c.clientID = clientID
+	clientID := c.clientID
 	connMsg := message.NewConnectMessage()
 	connMsg.SetClientId([]byte(clientID))
 	connMsg.SetVersion(0x04)
@@ -111,14 +108,7 @@ func (c *client) SendConnect() {
 }
 
 func (c *client) initClient() {
-	s := c.srv
-	if c.typ == CLIENT {
-		c.cid = atomic.AddUint64(&s.gcid, 1)
-	} else if c.typ == ROUTER {
-		c.cid = atomic.AddUint64(&s.grid, 1)
-	} else {
-		c.cid = atomic.AddUint64(&s.gmid, 1)
-	}
+
 	c.subs = make(map[string]*subscription)
 	c.packets = make(map[string][]byte)
 	if c.isWs {
@@ -193,17 +183,7 @@ func (c *client) Close() {
 	willMsg := c.willMsg
 
 	c.mu.Unlock()
-	if nc == nil && ws == nil {
-		return
-	}
-	if nc != nil {
-		nc.Close()
-		nc = nil
-	}
-	if ws != nil {
-		ws.Close()
-		ws = nil
-	}
+
 	// log.Info("client closed with cid: ", c.clientID)
 	if srv != nil {
 		srv.removeClient(c)
@@ -225,6 +205,15 @@ func (c *client) Close() {
 				srv.PublishOnDisconnectedMessage(username, clientID)
 			})
 		}
+	}
+
+	if nc != nil {
+		nc.Close()
+		nc = nil
+	}
+	if ws != nil {
+		ws.Close()
+		ws = nil
 	}
 	c.closeCh <- true
 }
@@ -314,16 +303,11 @@ func (c *client) ProcessConnect(msg []byte) {
 
 	srv.mu.Lock()
 	if typ == CLIENT {
-		srv.clients[c.cid] = c
+		srv.clients.Set(c.clientID, c)
 	} else if typ == ROUTER {
-		srv.routers[c.cid] = c
+		srv.routers.Set(c.clientID, c)
 	}
 	srv.mu.Unlock()
-
-	srv.startGoRoutine(func() {
-		ip := c.remoteIP
-		srv.PublishOnConnectedMessage(ip, c.username, c.clientID)
-	})
 
 	connack.SetReturnCode(message.ConnectionAccepted)
 
@@ -331,6 +315,11 @@ connback:
 	err1 := c.writeMessage(connack)
 	if err1 != nil {
 		log.Error("send connack error, ", err1)
+	} else {
+		srv.startGoRoutine(func() {
+			ip := c.remoteIP
+			srv.PublishOnConnectedMessage(ip, c.username, c.clientID)
+		})
 	}
 }
 
@@ -420,16 +409,19 @@ func (c *client) ProcessSubscribe(buf []byte) {
 		}
 		return
 	}
+
+	err1 := c.writeMessage(suback)
+	if err1 != nil {
+		log.Error("send suback error, ", err1)
+		return
+	}
+	//broadcast subscribe message
 	if typ == CLIENT {
 		srv.startGoRoutine(func() {
 			srv.BroadcastSubscribeMessage(buf)
 		})
 	}
-
-	err1 := c.writeMessage(suback)
-	if err1 != nil {
-		log.Error("send suback error, ", err1)
-	}
+	//process retain message
 	for _, t := range topics {
 		srv.startGoRoutine(func() {
 			bufs := srv.rl.Match(t)
@@ -470,9 +462,6 @@ func (c *client) ProcessUnSubscribe(msg []byte) {
 		}
 
 	}
-	if typ == CLIENT {
-		c.srv.BroadcastUnSubscribeMessage(msg)
-	}
 
 	resp := message.NewUnsubackMessage()
 	resp.SetPacketId(unsub.PacketId())
@@ -480,6 +469,11 @@ func (c *client) ProcessUnSubscribe(msg []byte) {
 	err1 := c.writeMessage(resp)
 	if err1 != nil {
 		log.Error("send ubsuback error, ", err1)
+		return
+	}
+	//process ubsubscribe message
+	if typ == CLIENT {
+		c.srv.BroadcastUnSubscribeMessage(msg)
 	}
 }
 
@@ -494,9 +488,17 @@ func (c *client) unsubscribe(sub *subscription) {
 	}
 }
 
-func (c *client) ProcessPing() {
+func (c *client) ProcessPing(buf []byte) {
+	ping := message.NewPingreqMessage()
+	_, err := ping.Decode(buf)
+	if err != nil {
+		log.Error("Decode PINGREQ Message error: ", err)
+		return
+	}
+
 	respMsg := message.NewPingrespMessage()
-	err := c.writeMessage(respMsg)
+	// respMsg.SetPacketId(ping.PacketId())
+	err = c.writeMessage(respMsg)
 	if err != nil {
 		log.Error("send pingresp error, ", err)
 	}
@@ -526,14 +528,6 @@ func (c *client) ProcessPublish(msg []byte) {
 		return
 	}
 
-	if pubMsg.Retain() {
-		srv.startGoRoutine(func() {
-			err := srv.rl.Insert(pubMsg.Topic(), msg)
-			if err != nil {
-				log.Error("Insert Retain Message error: ", err)
-			}
-		})
-	}
 	//process normal publish message
 	// c.ProcessPublishMessage(msg, topic)
 	switch pubMsg.QoS() {
@@ -561,6 +555,16 @@ func (c *client) ProcessPublish(msg []byte) {
 
 	case message.QosAtMostOnce:
 		c.ProcessPublishMessage(msg, pubMsg)
+	}
+
+	//process retain message
+	if pubMsg.Retain() {
+		srv.startGoRoutine(func() {
+			err := srv.rl.Insert(pubMsg.Topic(), msg)
+			if err != nil {
+				log.Error("Insert Retain Message error: ", err)
+			}
+		})
 	}
 }
 
@@ -610,7 +614,7 @@ func (c *client) ProcessPublishMessage(buf []byte, msg *message.PublishMessage) 
 				continue
 			}
 		}
-		s.mu.Lock()
+		s.qmu.Lock()
 		if cnt, exist := s.queues[string(sub.topic)]; exist && i == cnt {
 			if sub != nil {
 				err := sub.client.writeBuffer(buf)
@@ -621,7 +625,7 @@ func (c *client) ProcessPublishMessage(buf []byte, msg *message.PublishMessage) 
 			s.queues[topic] = (s.queues[topic] + 1) % len(r.qsubs)
 			break
 		}
-		s.mu.Unlock()
+		s.qmu.Unlock()
 	}
 }
 
@@ -638,12 +642,16 @@ func (c *client) ProcessPubREL(msg []byte) {
 	key := incoming + string(pubrel.PacketId())
 	if buf, exist = c.packets[key]; !exist {
 		log.Error("search qos 2 Message error ")
+		c.mu.Unlock()
 		return
 	}
+	c.mu.Unlock()
 
 	resp := message.NewPubcompMessage()
 	resp.SetPacketId(pubrel.PacketId())
 	c.writeMessage(resp)
+
+	c.mu.Lock()
 	delete(c.packets, key)
 	c.mu.Unlock()
 
@@ -704,21 +712,18 @@ func (c *client) writeBuffer(buf []byte) error {
 	if !c.isWs {
 		nc := c.nc
 		if nc == nil {
-			c.mu.Unlock()
-			return errors.New("conn is nul")
+			err = errors.New("conn is nul")
+		} else {
+			_, err = nc.Write(buf)
 		}
-		// nc.SetWriteDeadline(time.Now().Add(DEFAULT_WRITE_TIMEOUT))
-		_, err = nc.Write(buf)
 	} else {
 		ws := c.wsConn
 		if ws == nil {
-			c.mu.Unlock()
-			return errors.New("ws conn is nul")
+			err = errors.New("ws conn is nul")
+		} else {
+			err = ws.WriteMessage(websocket.BinaryMessage, buf)
 		}
-		err = ws.WriteMessage(websocket.BinaryMessage, buf)
 	}
-
-	// nc.SetWriteDeadline(time.Time{})
 	c.mu.Unlock()
 	return err
 }

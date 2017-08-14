@@ -3,6 +3,8 @@ package server
 import (
 	"broker/acl"
 	"strings"
+
+	"github.com/prometheus/common/log"
 )
 
 const (
@@ -11,9 +13,10 @@ const (
 )
 
 func (c *client) CheckTopicAuth(topic string, typ int) bool {
-	if typ != CLIENT || !c.srv.info.Acl {
+	if c.typ != CLIENT || !c.srv.info.Acl {
 		return true
 	}
+	log.Info("check auth topic : ", topic)
 	if strings.HasPrefix(topic, "$queue/") {
 		topic = string([]byte(topic)[7:])
 		if topic == "" {
