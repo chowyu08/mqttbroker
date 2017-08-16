@@ -84,6 +84,7 @@ func (c *client) ReadPacket() ([]byte, error) {
 	if conn == nil {
 		return nil, errors.New("conn is null")
 	}
+	// conn.SetReadDeadline(t)
 	var buf []byte
 	// read fix header
 	b := make([]byte, 1)

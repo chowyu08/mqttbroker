@@ -316,6 +316,11 @@ func (s *Server) createRemote(conn net.Conn, route *Route) {
 	c.clientID = GenUniqueId()
 
 	//save remote info and send local subs
+	// old, exist := srv.remotes.Get(c.clientID)
+	// if exist {
+	// 	log.Warn("remotes exists, close old...")
+	// 	old.Close()
+	// }
 	s.remotes.Set(c.clientID, c)
 
 	s.startGoRoutine(func() {

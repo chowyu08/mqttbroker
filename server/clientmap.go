@@ -7,6 +7,7 @@ type ClientMap interface {
 	Get(key string) (*client, bool)
 	Items() map[string]*client
 	Exist(key string) bool
+	Update(key string, val *client) (*client, bool)
 	Count() int
 	Remove(key string)
 }
@@ -41,6 +42,14 @@ func (s *clientMap) Exist(key string) bool {
 	_, ok := s.items[key]
 	s.mu.RUnlock()
 	return ok
+}
+
+func (s *clientMap) Update(key string, val *client) (*client, bool) {
+	s.mu.Lock()
+	old, ok := s.items[key]
+	s.items[key] = val
+	s.mu.Unlock()
+	return old, ok
 }
 
 func (s *clientMap) Count() int {

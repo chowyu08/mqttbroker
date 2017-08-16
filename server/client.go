@@ -141,7 +141,6 @@ func (c *client) readLoop() {
 				c.Close()
 				return
 			}
-
 			buf, err := c.ReadPacket()
 			if err != nil {
 				if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
@@ -256,7 +255,8 @@ func (c *client) ProcessConnect(msg []byte) {
 	if srv == nil {
 		return
 	}
-
+	var exist bool
+	var old *client
 	connMsg := message.NewConnectMessage()
 	_, err := connMsg.Decode(msg)
 	if err != nil {
@@ -301,19 +301,13 @@ func (c *client) ProcessConnect(msg []byte) {
 	}
 
 	if typ == CLIENT {
-		old, exist := srv.clients.Get(c.clientID)
-		if exist {
-			log.Warn("client exists, close old...")
-			old.Close()
-		}
-		srv.clients.Set(c.clientID, c)
+		old, exist = srv.clients.Update(c.clientID, c)
 	} else if typ == ROUTER {
-		old, exist := srv.routers.Get(c.clientID)
-		if exist {
-			log.Warn("router exists, close old...")
-			old.Close()
-		}
-		srv.routers.Set(c.clientID, c)
+		old, exist = srv.routers.Update(c.clientID, c)
+	}
+	if exist {
+		log.Warn("client exists, close old...")
+		old.Close()
 	}
 
 	connack.SetReturnCode(message.ConnectionAccepted)

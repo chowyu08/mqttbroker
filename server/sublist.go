@@ -291,7 +291,6 @@ func matchLevel(l *level, toks []string, results *SublistResult) {
 func addNodeToResults(n *node, results *SublistResult) {
 	results.psubs = append(results.psubs, n.psubs...)
 	results.qsubs = append(results.qsubs, n.qsubs...)
-
 }
 
 func removeSubFromList(sub *subscription, sl []*subscription) ([]*subscription, bool) {
