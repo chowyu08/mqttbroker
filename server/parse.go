@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -66,12 +67,12 @@ func (c *client) parse(buf []byte) {
 	case UNSUBACK:
 		//log.Info("Recv unsuback message.....")
 	case PINGREQ:
-		log.Info("Recv PINGREQ message..........")
+		// log.Info("Recv PINGREQ message..........")
 		c.ProcessPing(buf)
 	case PINGRESP:
 		//log.Info("Recv PINGRESP message..........")
 	case DISCONNECT:
-		log.Info("Recv DISCONNECT message.......")
+		// log.Info("Recv DISCONNECT message.......")
 		c.Close()
 	default:
 		log.Info("Recv Unknow message.......")
@@ -80,6 +81,9 @@ func (c *client) parse(buf []byte) {
 
 func (c *client) ReadPacket() ([]byte, error) {
 	conn := c.nc
+	if conn == nil {
+		return nil, errors.New("conn is null")
+	}
 	var buf []byte
 	// read fix header
 	b := make([]byte, 1)

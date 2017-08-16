@@ -109,6 +109,7 @@ func (c *client) SendConnect() {
 
 func (c *client) initClient() {
 
+	c.closeCh = make(chan bool, 1)
 	c.subs = make(map[string]*subscription)
 	c.packets = make(map[string][]byte)
 	if c.isWs {
@@ -123,7 +124,6 @@ func (c *client) initClient() {
 
 func (c *client) readLoop() {
 	nc := c.nc
-	keeplive := c.keeplive
 
 	if nc == nil {
 		return
@@ -133,11 +133,10 @@ func (c *client) readLoop() {
 	for {
 		select {
 		case <-c.closeCh:
-			c = nil
 			return
 		default:
 			nowTime := uint16(time.Now().Unix())
-			if 0 != keeplive && nowTime-lastIn > keeplive*3/2 {
+			if 0 != c.keeplive && nowTime-lastIn > c.keeplive*3/2 {
 				log.Error("Client has exceeded timeout, disconnecting.")
 				c.Close()
 				return
@@ -181,13 +180,22 @@ func (c *client) Close() {
 	username := c.username
 	clientID := c.clientID
 	willMsg := c.willMsg
-
 	c.mu.Unlock()
+	if nc != nil {
+		nc.Close()
+		nc = nil
+	}
+	if ws != nil {
+		ws.Close()
+		ws = nil
+	}
+	subs := c.subs
+	c.closeCh <- true
 
 	// log.Info("client closed with cid: ", c.clientID)
 	if srv != nil {
 		srv.removeClient(c)
-		for _, sub := range c.subs {
+		for _, sub := range subs {
 			// log.Info("remove Sub")
 			err := srv.sl.Remove(sub)
 			if err != nil {
@@ -207,15 +215,6 @@ func (c *client) Close() {
 		}
 	}
 
-	if nc != nil {
-		nc.Close()
-		nc = nil
-	}
-	if ws != nil {
-		ws.Close()
-		ws = nil
-	}
-	c.closeCh <- true
 }
 
 func (c *client) ProcessConnAck(buf []byte) {
@@ -281,8 +280,8 @@ func (c *client) ProcessConnect(msg []byte) {
 	c.password = string(connMsg.Password())
 
 	keeplive = connMsg.KeepAlive()
-	if keeplive < 10 {
-		c.keeplive = 60
+	if keeplive < 1 {
+		c.keeplive = 30
 	} else {
 		c.keeplive = keeplive
 	}
@@ -301,13 +300,21 @@ func (c *client) ProcessConnect(msg []byte) {
 		c.willMsg = nil
 	}
 
-	srv.mu.Lock()
 	if typ == CLIENT {
+		old, exist := srv.clients.Get(c.clientID)
+		if exist {
+			log.Warn("client exists, close old...")
+			old.Close()
+		}
 		srv.clients.Set(c.clientID, c)
 	} else if typ == ROUTER {
+		old, exist := srv.routers.Get(c.clientID)
+		if exist {
+			log.Warn("router exists, close old...")
+			old.Close()
+		}
 		srv.routers.Set(c.clientID, c)
 	}
-	srv.mu.Unlock()
 
 	connack.SetReturnCode(message.ConnectionAccepted)
 
@@ -367,11 +374,11 @@ func (c *client) ProcessSubscribe(buf []byte) {
 				if len(t) > 7 {
 					t = t[7:]
 					queue = true
-					srv.mu.Lock()
+					srv.qmu.Lock()
 					if _, exists := srv.queues[topic]; !exists {
 						srv.queues[topic] = 0
 					}
-					srv.mu.Unlock()
+					srv.qmu.Unlock()
 				} else {
 					retcodes = append(retcodes, message.QosFailure)
 					continue
@@ -636,9 +643,10 @@ func (c *client) ProcessPubREL(msg []byte) {
 		log.Error("Decode Pubrel Message error: ", err)
 		return
 	}
-	c.mu.Lock()
+
 	var buf []byte
 	exist := false
+	c.mu.Lock()
 	key := incoming + string(pubrel.PacketId())
 	if buf, exist = c.packets[key]; !exist {
 		log.Error("search qos 2 Message error ")

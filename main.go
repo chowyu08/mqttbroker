@@ -4,13 +4,12 @@ import (
 	"broker/server"
 	"os"
 	"os/signal"
-	"runtime"
 
 	log "github.com/cihub/seelog"
 )
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
+	// runtime.GOMAXPROCS(runtime.NumCPU())
 	info, err := server.LoadConfig()
 	if err != nil {
 		panic(err)
