@@ -108,16 +108,15 @@ func (s *Server) Start() {
 			s.AcceptClientsLoop(false)
 		})
 	}
+	if s.info.TlsPort != "" {
+		s.startGoRoutine(func() {
+			s.AcceptClientsLoop(true)
+		})
+	}
 
 	if s.info.WsPort != "" {
 		s.startGoRoutine(func() {
 			s.AcceptWSLoop()
-		})
-	}
-
-	if s.info.TlsPort != "" {
-		s.startGoRoutine(func() {
-			s.AcceptClientsLoop(true)
 		})
 	}
 

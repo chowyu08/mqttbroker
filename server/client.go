@@ -306,7 +306,7 @@ func (c *client) ProcessConnect(msg []byte) {
 		old, exist = srv.routers.Update(c.clientID, c)
 	}
 	if exist {
-		log.Warn("client exists, close old...")
+		log.Warn("client or routers exists, close old...")
 		old.Close()
 	}
 
