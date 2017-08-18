@@ -56,7 +56,7 @@ $ go run main.go
 
 * $SYS topics  
 
-* Flexible  ACL
+* Flexible and Dynamic ACL
 
 ### QUEUE SUBSCRIBE
 
