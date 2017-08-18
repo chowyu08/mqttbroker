@@ -132,7 +132,6 @@ Client -> | Rule1 | --nomatch--> | Rule2 | --nomatch--> | Rule3 | -->
 
 * Low memory and CPU
 
-  over **400,000 MPS** in a 20000:20000  publisher and producer configuration
 
 ## License
 
