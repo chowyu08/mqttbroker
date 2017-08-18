@@ -159,7 +159,7 @@ func (c *client) readLoop() {
 					continue
 				}
 			}
-			c.parse(buf)
+			go c.parse(buf)
 
 			nc := c.nc
 
