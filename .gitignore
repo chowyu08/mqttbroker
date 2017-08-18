@@ -3,4 +3,5 @@ broker
 tls/*
 broker.exe
 log/
+log/*
 

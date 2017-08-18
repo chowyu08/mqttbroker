@@ -2,12 +2,17 @@ package main
 
 import (
 	"broker/server"
+	"broker/utils"
 	"os"
 	"os/signal"
 
 	log "github.com/cihub/seelog"
 )
 
+func init() {
+	utils.LoadSeelogConfig()
+	utils.StartSeelogConfigWatcher()
+}
 func main() {
 	// runtime.GOMAXPROCS(runtime.NumCPU())
 	info, err := server.LoadConfig()

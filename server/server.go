@@ -98,6 +98,7 @@ func New(info *Info) (*Server, error) {
 			return nil, err
 		}
 		server.AclConfig = aclconfig
+		server.StartAclWatcher()
 	}
 	return server, nil
 }
